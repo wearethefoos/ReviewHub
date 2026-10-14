@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "lines": {
+          "description": "Overall line coverage.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "baseLines": {
+          "description": "Overall line coverage on the base branch, if known.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "files": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lines": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "Line coverage of the whole file, in percent."
+              },
+              "branches": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "uncoveredLines": {
+                "default": [],
+                "description": "Executable lines with zero hits in the new version of the file.",
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            "required": [
+              "path",
+              "lines"
+            ]
+          }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "files": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "complexity": {
+                "description": "Cyclomatic complexity of the file after the change.",
+                "type": "number",
+                "minimum": 0
+              },
+              "complexityDelta": {
+                "description": "Change in complexity introduced by this pull request.",
+                "type": "number"
+              },
+              "duplication": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "lintIssues": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "version"
+  ]
+}

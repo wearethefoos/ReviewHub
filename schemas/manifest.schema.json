@@ -1,0 +1,524 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1"
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string"
+        },
+        "sessionUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "prompt": {
+      "type": "object",
+      "properties": {
+        "original": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The user's request, verbatim."
+        },
+        "followUps": {
+          "default": [],
+          "description": "Later user messages that changed the scope.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "description": "Link to the issue or conversation the prompt came from.",
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "original"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "description": "What was delivered, in a few sentences."
+    },
+    "deviations": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier, unique within its list."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requested": {
+            "type": "string",
+            "description": "What the prompt asked for."
+          },
+          "delivered": {
+            "type": "string",
+            "description": "What was delivered instead."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the agent deviated."
+          },
+          "severity": {
+            "default": "minor",
+            "type": "string",
+            "enum": [
+              "minor",
+              "major"
+            ]
+          },
+          "files": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository-relative file path."
+                },
+                "lines": {
+                  "description": "Inclusive [start, end] line range in the new version of the file.",
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "requested",
+          "delivered",
+          "reason"
+        ]
+      }
+    },
+    "decisions": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier, unique within its list."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "context": {
+            "type": "string",
+            "description": "The question that needed answering and why the prompt did not settle it."
+          },
+          "chosen": {
+            "type": "string",
+            "description": "What the agent decided."
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "impact": {
+            "default": "low",
+            "description": "How costly it is to get this wrong or change it later.",
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "alternatives": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": {
+                  "type": "string"
+                },
+                "tradeoffs": {
+                  "type": "string"
+                },
+                "prompt": {
+                  "description": "A ready-to-use prompt that asks an agent to switch to this alternative.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "description"
+              ]
+            }
+          },
+          "files": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository-relative file path."
+                },
+                "lines": {
+                  "description": "Inclusive [start, end] line range in the new version of the file.",
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "context",
+          "chosen",
+          "rationale"
+        ]
+      }
+    },
+    "validation": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier, unique within its list."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unit-test",
+              "integration-test",
+              "e2e-test",
+              "typecheck",
+              "lint",
+              "build",
+              "manual",
+              "benchmark",
+              "other"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "partial",
+              "skipped"
+            ]
+          },
+          "evidence": {
+            "description": "Short excerpt of output proving the result.",
+            "type": "string"
+          },
+          "files": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository-relative file path."
+                },
+                "lines": {
+                  "description": "Inclusive [start, end] line range in the new version of the file.",
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "description",
+          "result"
+        ]
+      }
+    },
+    "gaps": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier, unique within its list."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "why": {
+            "type": "string",
+            "description": "Why the agent could not validate this."
+          },
+          "howToValidate": {
+            "type": "string",
+            "description": "Concrete steps for whoever closes the gap."
+          },
+          "owner": {
+            "default": "human",
+            "type": "string",
+            "enum": [
+              "human",
+              "agent",
+              "ci",
+              "ops"
+            ]
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ]
+          },
+          "files": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Repository-relative file path."
+                },
+                "lines": {
+                  "description": "Inclusive [start, end] line range in the new version of the file.",
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "why",
+          "howToValidate"
+        ]
+      }
+    },
+    "rollout": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier, unique within its list."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "default": "",
+            "type": "string"
+          },
+          "owner": {
+            "default": "human",
+            "type": "string",
+            "enum": [
+              "human",
+              "agent",
+              "ci",
+              "ops"
+            ]
+          },
+          "when": {
+            "default": "before-merge",
+            "type": "string",
+            "enum": [
+              "before-merge",
+              "after-merge",
+              "after-deploy"
+            ]
+          },
+          "blocking": {
+            "default": false,
+            "type": "boolean"
+          },
+          "prompt": {
+            "description": "Prompt to hand this step to an agent.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      }
+    },
+    "files": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "core",
+              "supporting",
+              "test",
+              "config",
+              "docs",
+              "generated",
+              "mechanical"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "reviewHint": {
+            "description": "The agent's own suggestion. ReviewHub treats 'skip' as a claim, not a verdict.",
+            "type": "string",
+            "enum": [
+              "must-review",
+              "skim",
+              "skip"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "role"
+        ]
+      }
+    }
+  },
+  "required": [
+    "version",
+    "agent",
+    "prompt",
+    "summary"
+  ]
+}

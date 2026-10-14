@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1"
+    },
+    "scanner": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "commit": {
+      "description": "Head commit SHA the scan ran against.",
+      "type": "string"
+    },
+    "summary": {
+      "default": "",
+      "type": "string"
+    },
+    "findings": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "category": {
+            "description": "For example a CWE id such as 'CWE-89'.",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lines": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "confidence": {
+            "default": "medium",
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "suggestion": {
+            "type": "object",
+            "properties": {
+              "explanation": {
+                "type": "string"
+              },
+              "diff": {
+                "description": "Unified diff that fixes the finding, applicable with `git apply`.",
+                "type": "string"
+              },
+              "prompt": {
+                "description": "Prompt that asks an agent to implement the fix or refactor.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "explanation"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "description",
+          "file",
+          "suggestion"
+        ]
+      }
+    }
+  },
+  "required": [
+    "version",
+    "scanner"
+  ]
+}
