@@ -109,7 +109,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           </li>
         </ul>
         <p className="mt-3 flex items-center gap-2">
-          <BeakerIcon size={16} /> The schemas, the agent instructions and the CLI are in the repository under <Code>docs/</Code>, <Code>agents/</Code> and{" "}
+          <BeakerIcon size={16} /> The schemas, the agent instructions and the CLI are in the repository under <Code>docs/</Code>, <Code>plugin/</Code> (a Claude Code plugin) and{" "}
           <Code>cli/</Code>.
         </p>
       </Box>

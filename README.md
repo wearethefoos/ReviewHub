@@ -38,9 +38,22 @@ Each report has its own author, so no agent grades its own work. See [`docs/repo
 
 To set up a repository:
 
-1. Add [`agents/author.md`](agents/author.md) to the repository's agent instructions (e.g. `CLAUDE.md`), so the authoring agent publishes a manifest with every pull request.
-2. Run a separate agent with [`agents/security-reviewer.md`](agents/security-reviewer.md) on each pull request.
+1. Have the authoring agent publish a manifest with every pull request. With Claude Code, install the [plugin](#claude-code-plugin) and opt the repository in. Other agents can follow [`plugin/skills/review-manifest/SKILL.md`](plugin/skills/review-manifest/SKILL.md).
+2. Run an independent security review on each pull request: `/reviewhub:security-review owner/repo#123`, or another agent prompted with [`plugin/agents/security-reviewer.md`](plugin/agents/security-reviewer.md).
 3. Publish coverage from CI, for example with [`docs/examples/reviewhub-metrics.yml`](docs/examples/reviewhub-metrics.yml).
+
+### Claude Code plugin
+
+```
+/plugin marketplace add wearethefoos/ReviewHub
+/plugin install reviewhub@reviewhub
+```
+
+- `/reviewhub:review owner/repo#123`: a briefing on the pull request, then a walk through what needs your judgement.
+- `/reviewhub:security-review owner/repo#123`: an independent security review by a subagent, published as a comment.
+- `reviewhub:review-manifest`: Claude writes and publishes the manifest for pull requests it opens, in repositories whose `CLAUDE.md` mentions ReviewHub (a hook reminds it after `gh pr create`).
+
+See [`plugin/README.md`](plugin/README.md).
 
 ### CLI
 
@@ -96,7 +109,8 @@ src/lib/diff/            unified diff parsing
 cli/                     reviewhub CLI (Rust)
 schemas/                 JSON Schemas generated from src/lib/schema
 fixtures/demo/           demo pull request + the web app's focus analysis of it (CLI parity tests)
-agents/                  instructions for the authoring and security agents
+plugin/                  Claude Code plugin: skills, security-reviewer subagent, hook
+.claude-plugin/          plugin marketplace (this repository)
 ```
 
 ## Not built yet

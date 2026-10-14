@@ -1,0 +1,14 @@
+{
+  "name": "reviewhub",
+  "description": "ReviewHub: focused reviews of agent-authored pull requests.",
+  "owner": { "name": "wearethefoos", "url": "https://github.com/wearethefoos" },
+  "plugins": [
+    {
+      "name": "reviewhub",
+      "source": "./plugin",
+      "description": "Publish review manifests with your pull requests, run an independent security review, and review agent-authored PRs by what matters.",
+      "category": "code-review",
+      "tags": ["code-review", "pull-requests", "security", "github"]
+    }
+  ]
+}

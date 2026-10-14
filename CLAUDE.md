@@ -1,11 +1,12 @@
 # ReviewHub
 
-Next.js app that renders agent-authored GitHub pull requests as a focused review. See README.md for the product and docs/reports.md for the report formats.
+Next.js app (plus a Rust CLI in `cli/` and a Claude Code plugin in `plugin/`) that renders agent-authored GitHub pull requests as a focused review. See README.md for the product and docs/reports.md for the report formats.
 
 ## Commands
 
 - Web: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - CLI (`cli/`, Rust): `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+- Plugin (`plugin/`): `claude plugin validate . --strict && claude plugin validate ./plugin --strict`, `scripts/test-plugin-hook.sh`. Bump `version` in `plugin/.claude-plugin/plugin.json` when you change it, or installed copies won't update.
 - After changing `src/lib/schema/`, `src/lib/focus/` or the demo fixture, run `npm run generate` and commit `schemas/` and `fixtures/` (CI checks they match).
 
 ## Conventions

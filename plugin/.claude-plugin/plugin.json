@@ -1,0 +1,10 @@
+{
+  "name": "reviewhub",
+  "displayName": "ReviewHub",
+  "version": "0.1.0",
+  "description": "Publish review manifests with your pull requests, run an independent security review, and review agent-authored PRs by what matters.",
+  "author": { "name": "wearethefoos", "url": "https://github.com/wearethefoos" },
+  "homepage": "https://github.com/wearethefoos/ReviewHub",
+  "repository": "https://github.com/wearethefoos/ReviewHub",
+  "keywords": ["code-review", "pull-requests", "security", "agents"]
+}

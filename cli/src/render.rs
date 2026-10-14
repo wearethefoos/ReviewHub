@@ -148,7 +148,7 @@ pub fn briefing(bundle: &PullRequestBundle, focus: &FocusAnalysis, opts: &Option
                 out,
                 "{}",
                 wrap(
-                    "Files are ranked from coverage, security findings and path heuristics only. Ask the authoring agent to publish a manifest (see agents/author.md).",
+                    "Files are ranked from coverage, security findings and path heuristics only. Ask the authoring agent to publish a manifest (/reviewhub:review-manifest in Claude Code).",
                     2
                 )
             );
@@ -260,7 +260,11 @@ pub fn briefing(bundle: &PullRequestBundle, focus: &FocusAnalysis, opts: &Option
         }
         None => {
             heading(&mut out, "Security", None);
-            let _ = writeln!(out, "  {}", paint(DIM, "No security report yet (see agents/security-reviewer.md)."));
+            let _ = writeln!(
+                out,
+                "  {}",
+                paint(DIM, "No security report yet (/reviewhub:security-review in Claude Code).")
+            );
         }
     }
 

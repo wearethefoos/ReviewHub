@@ -34,7 +34,7 @@ export function Security({ pr, report, error }: { pr: PullRequestInfo; report?: 
         ) : (
           <>
             Run a separate security agent over this pull request and publish its findings with <Code>reviewhub publish security</Code>. See{" "}
-            <Code>agents/security-reviewer.md</Code>.
+            <Code>/reviewhub:security-review</Code> in Claude Code, or <Code>plugin/agents/security-reviewer.md</Code>.
           </>
         )}
       </EmptyState>
