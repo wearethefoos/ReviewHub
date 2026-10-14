@@ -1,6 +1,6 @@
 {
   "name": "reviewhub-extension",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "ReviewHub browser extension: review agent-authored GitHub pull requests by what matters.",
   "type": "module",
