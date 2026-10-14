@@ -68,7 +68,9 @@ plugin 1.2.0
 fails "refuses a binary that doesn't match SHA256SUMS" "$tmp/plugin/bin/reviewhub" --version
 check "keeps the working install" test -x "$tmp/cache/v1.1.0/reviewhub"
 plugin 9.9.9
-fails "fails clearly for an unreleased version" "$tmp/plugin/bin/reviewhub" --version
+check "while a new release is still building, runs the newest installed version" "$tmp/plugin/bin/reviewhub" --version
+check "without installing anything for it" test ! -e "$tmp/cache/v9.9.9/reviewhub"
+fails "fails clearly for an unreleased version when nothing is installed" env REVIEWHUB_CACHE_DIR="$tmp/empty-cache" "$tmp/plugin/bin/reviewhub" --version
 check "REVIEWHUB_BIN overrides the download" env REVIEWHUB_BIN="$binary" "$tmp/plugin/bin/reviewhub" --version
 
 [ "$failures" -eq 0 ]

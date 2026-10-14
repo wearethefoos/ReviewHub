@@ -129,8 +129,16 @@ if [ ! -x "$bin" ]; then
   trap 'rm -rf "$tmp"' EXIT INT TERM
 
   echo "reviewhub: installing the ReviewHub CLI v$version ($arch-$os)…" >&2
-  fetch SHA256SUMS "$tmp/SHA256SUMS" ||
-    fail "couldn't download SHA256SUMS of v$version. Is it released? For a local build, set REVIEWHUB_BIN."
+  if ! fetch SHA256SUMS "$tmp/SHA256SUMS"; then
+    # Right after a release, its binaries take a few minutes to build. Until
+    # then, run the newest CLI already installed instead of failing.
+    previous=$(ls -d "$cache"/v*/ 2>/dev/null | sed 's|/$||; s|.*/v||' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+    if [ -n "$previous" ] && [ -x "$cache/v$previous/reviewhub$exe" ]; then
+      echo "reviewhub: v$version isn't downloadable yet (a new release takes a few minutes to build); using v$previous for now." >&2
+      exec "$cache/v$previous/reviewhub$exe" "$@"
+    fi
+    fail "couldn't download SHA256SUMS of v$version. A new release takes a few minutes to build; if this persists, check that v$version is released. For a local build, set REVIEWHUB_BIN."
+  fi
   fetch "$asset" "$tmp/$asset" || fail "couldn't download $asset of v$version"
 
   expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")
