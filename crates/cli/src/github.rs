@@ -139,18 +139,24 @@ impl GitHub {
 
     /// Creates the report comment, or updates this user's earlier comment of the same kind.
     pub fn publish(&self, kind: Kind, report: &Report, owner: &str, repo: &str, number: u32) -> Result<String> {
+        self.upsert_comment(owner, repo, number, &kind.marker(), &reports::render_comment(kind, report))
+    }
+
+    /// Creates a comment that starts with `marker`, or updates the earlier one
+    /// (this user's, when the token can tell who that is).
+    pub fn upsert_comment(&self, owner: &str, repo: &str, number: u32, marker: &str, body: &str) -> Result<String> {
         if self.token.is_none() {
             bail!("publishing needs a token: set GITHUB_TOKEN or run `gh auth login`");
         }
+        // GitHub Actions tokens can't read /user; then any comment with the marker is ours to update.
         let me = self.get("/user").ok().and_then(|u| u["login"].as_str().map(String::from));
-        let marker = kind.marker();
         let comments: Vec<Comment> = self.get_pages(&format!("/repos/{owner}/{repo}/issues/{number}/comments"), 100)?;
         let existing = comments.iter().find(|c| {
-            c.body.as_deref().is_some_and(|b| b.contains(&marker))
+            c.body.as_deref().is_some_and(|b| b.trim_start().starts_with(marker))
                 && me.as_deref().is_none_or(|me| c.user.as_ref().is_some_and(|u| u.login == me))
         });
 
-        let body = json!({ "body": reports::render_comment(kind, report) });
+        let body = json!({ "body": body });
         let result = match existing {
             Some(c) => self.request("PATCH", &format!("/repos/{owner}/{repo}/issues/comments/{}", c.id), Some(body))?,
             None => self.request("POST", &format!("/repos/{owner}/{repo}/issues/{number}/comments"), Some(body))?,

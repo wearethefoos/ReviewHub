@@ -1,7 +1,9 @@
 //! `reviewhub`: review agent-authored pull requests from the terminal, and
 //! produce and publish the reports ReviewHub reads.
 
+mod briefing;
 mod github;
+mod init;
 mod render;
 
 use std::io::Read as _;
@@ -14,7 +16,7 @@ use clap::{Parser, Subcommand};
 use regex::Regex;
 use serde_json::{Value, json};
 
-use reviewhub_core::focus::{FocusInput, Tier, analyze};
+use reviewhub_core::focus::{FocusAnalysis, FocusInput, Tier, analyze};
 use reviewhub_core::lcov;
 use reviewhub_core::model::{Coverage, MetricsReport, PullRequestBundle, ReportVersion};
 use reviewhub_core::reports::{self, Kind, Report};
@@ -55,6 +57,41 @@ enum Cmd {
         /// Print the diffs of Focus files (with --all, also Skim files), annotated
         #[arg(long)]
         diff: bool,
+    },
+    /// Write the review briefing as a GitHub comment, or publish it on the pull request
+    #[command(
+        after_help = "With --publish, uses GITHUB_TOKEN or your `gh auth login`; in GitHub Actions, the workflow token."
+    )]
+    Briefing {
+        /// owner/repo#123 or a pull request URL
+        #[arg(required_unless_present = "bundle")]
+        pr: Option<String>,
+        /// Read a saved bundle instead of GitHub
+        #[arg(long, value_name = "FILE", conflicts_with_all = ["pr", "publish"])]
+        bundle: Option<PathBuf>,
+        /// Create or update the briefing comment on the pull request instead of printing it
+        #[arg(long)]
+        publish: bool,
+        /// Where "Open the full review" points: the ReviewHub web app
+        #[arg(long, env = "REVIEWHUB_WEB_URL", default_value = briefing::DEFAULT_WEB_URL)]
+        web_url: String,
+    },
+    /// Set up a repository for ReviewHub in Claude Code, including cloud sessions that can't install plugins
+    #[command(
+        after_help = "Writes the ReviewHub skills and security subagent under .claude/, a launcher pinned to this CLI's \
+version, hooks in .claude/settings.json, a note in CLAUDE.md and the PR briefing workflow. Commit the result. \
+Run it again with a newer CLI to update."
+    )]
+    Init {
+        /// Repository root [default: the git repository containing the current directory]
+        #[arg(long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+        /// Don't add .github/workflows/reviewhub.yml
+        #[arg(long)]
+        no_workflow: bool,
+        /// Only report whether the files are up to date; exit with 1 if not
+        #[arg(long)]
+        check: bool,
     },
     /// Check a report against its schema
     Validate {
@@ -140,31 +177,54 @@ fn strip_patches(out: &mut Value) {
     }
 }
 
+fn load_bundle(path: Option<PathBuf>, pr: Option<&str>) -> Result<PullRequestBundle> {
+    match (path, pr) {
+        (Some(path), _) => {
+            let text = std::fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))?;
+            let value: Value = serde_json::from_str(&text)?;
+            // Accept both a bare bundle and the output of `review --json`.
+            serde_json::from_value(value.get("bundle").cloned().unwrap_or(value))
+                .with_context(|| format!("{} is not a pull request bundle", path.display()))
+        }
+        (None, Some(pr)) => {
+            let (owner, repo, number) = parse_pr_ref(pr)
+                .ok_or_else(|| anyhow!("can't read {pr:?}: use owner/repo#123 or a pull request URL"))?;
+            GitHub::new(github::resolve_token()).fetch_bundle(&owner, &repo, number)
+        }
+        (None, None) => unreachable!("clap requires one of them"),
+    }
+}
+
+fn analyze_bundle(bundle: &PullRequestBundle) -> FocusAnalysis {
+    analyze(&FocusInput {
+        files: &bundle.files,
+        manifest: bundle.manifest(),
+        security: bundle.security(),
+        metrics: bundle.metrics(),
+    })
+}
+
+fn git_root() -> Option<PathBuf> {
+    let out = std::process::Command::new("git").args(["rev-parse", "--show-toplevel"]).output().ok()?;
+    out.status.success().then(|| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+}
+
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        Cmd::Briefing { pr, bundle, publish, web_url } => {
+            let bundle = load_bundle(bundle, pr.as_deref())?;
+            let markdown = briefing::render(&bundle, &analyze_bundle(&bundle), &web_url);
+            if publish {
+                let p = &bundle.pr;
+                let github = GitHub::new(github::resolve_token());
+                println!("{}", github.upsert_comment(&p.owner, &p.repo, p.number, briefing::MARKER, &markdown)?);
+            } else {
+                print!("{markdown}");
+            }
+        }
         Cmd::Review { pr, bundle, json, patches, all, diff } => {
-            let bundle: PullRequestBundle = match (bundle, pr) {
-                (Some(path), _) => {
-                    let text =
-                        std::fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))?;
-                    let value: Value = serde_json::from_str(&text)?;
-                    // Accept both a bare bundle and the output of `review --json`.
-                    serde_json::from_value(value.get("bundle").cloned().unwrap_or(value))
-                        .with_context(|| format!("{} is not a pull request bundle", path.display()))?
-                }
-                (None, Some(pr)) => {
-                    let (owner, repo, number) = parse_pr_ref(&pr)
-                        .ok_or_else(|| anyhow!("can't read {pr:?}: use owner/repo#123 or a pull request URL"))?;
-                    GitHub::new(github::resolve_token()).fetch_bundle(&owner, &repo, number)?
-                }
-                (None, None) => unreachable!("clap requires one of them"),
-            };
-            let analysis = analyze(&FocusInput {
-                files: &bundle.files,
-                manifest: bundle.manifest(),
-                security: bundle.security(),
-                metrics: bundle.metrics(),
-            });
+            let bundle = load_bundle(bundle, pr.as_deref())?;
+            let analysis = analyze_bundle(&bundle);
             if json {
                 let mut out = json!({ "bundle": bundle, "focus": analysis });
                 if !patches {
@@ -177,6 +237,29 @@ fn run(cli: Cli) -> Result<()> {
                     let tiers: &[Tier] = if all { &[Tier::Focus, Tier::Skim] } else { &[Tier::Focus] };
                     anstream::print!("{}", render::diffs(&analysis, tiers));
                 }
+            }
+        }
+        Cmd::Init { dir, no_workflow, check } => {
+            let root = match dir {
+                Some(dir) => dir,
+                None => git_root().unwrap_or(std::env::current_dir()?),
+            };
+            let outcome = init::run(&root, !no_workflow, check)?;
+            for (path, change) in &outcome.changes {
+                let label = match change {
+                    init::Change::Created if check => "missing",
+                    init::Change::Updated if check => "outdated",
+                    init::Change::Created => "created",
+                    init::Change::Updated => "updated",
+                    init::Change::Unchanged => "up to date",
+                };
+                println!("{label:>10}  {path}");
+            }
+            if check && outcome.changed() {
+                bail!("ReviewHub files are not up to date with this CLI (v{}); run `reviewhub init`", init::VERSION);
+            }
+            if !check && outcome.changed() {
+                println!("\nReviewHub v{} is set up in {}. Commit these files.", init::VERSION, root.display());
             }
         }
         Cmd::Validate { kind, file } => {

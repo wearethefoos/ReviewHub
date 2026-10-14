@@ -57,8 +57,13 @@ check "runs from the cache without the network" "$tmp/plugin/bin/reviewhub" --ve
 server=$!
 sleep 1
 plugin 1.1.0
+touch -t 202001010000 "$tmp/cache/v1.0.0"
 check "a plugin update installs the matching binary" "$tmp/plugin/bin/reviewhub" --version
-check "and removes the old one" test ! -e "$tmp/cache/v1.0.0"
+check "and removes versions unused for 30 days" test ! -e "$tmp/cache/v1.0.0"
+mkdir -p "$tmp/repo/.claude/reviewhub/bin" && cp "$repo/plugin/bin/reviewhub" "$tmp/repo/.claude/reviewhub/bin/" && echo 1.0.0 > "$tmp/repo/.claude/reviewhub/bin/VERSION"
+check "a repository launcher runs the version in its VERSION file" "$tmp/repo/.claude/reviewhub/bin/reviewhub" --version
+check "next to the plugin's version, without removing it" test -x "$tmp/cache/v1.1.0/reviewhub"
+check "both stay installed" test -x "$tmp/cache/v1.0.0/reviewhub"
 plugin 1.2.0
 fails "refuses a binary that doesn't match SHA256SUMS" "$tmp/plugin/bin/reviewhub" --version
 check "keeps the working install" test -x "$tmp/cache/v1.1.0/reviewhub"

@@ -52,6 +52,10 @@ If several comments of the same kind exist, the most recently updated one wins.
 
 ReviewHub falls back to `.reviewhub/manifest.json`, `.reviewhub/security.json` and `.reviewhub/metrics.json` at the pull request's head commit. Files under `.reviewhub/` are left out of the review. Comments are preferred because they don't end up in the repository's history.
 
+### The briefing comment
+
+`reviewhub briefing owner/repo#123 --publish` (run by the workflow `reviewhub init` adds) keeps one comment starting with `<!-- reviewhub:briefing -->` on the pull request: the briefing in Markdown, with links into the diff, to the web app and to the extension. It is output, not a report, and is never read back as one. The workflow refreshes it when the pull request changes and when a report comment is posted with a person's or app's token. Comments posted with a workflow's own `GITHUB_TOKEN` don't trigger other workflows, so a workflow that publishes a report should refresh the briefing itself (see [`examples/reviewhub-metrics.yml`](examples/reviewhub-metrics.yml)).
+
 ## `manifest`
 
 | Field        | Purpose                                                                                                                          |

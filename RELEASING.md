@@ -27,6 +27,8 @@ So release from a branch, and merge after the release is published:
 
 4. When the release is published, merge the pull request. Plugin users get the new version on their next marketplace update, and the CLI follows on first use.
 
-5. If you publish the extension on the Chrome Web Store, upload `reviewhub-extension-v0.2.0.zip` from the release.
+5. Merging to `main` also redeploys the web app to GitHub Pages ([pages workflow](.github/workflows/pages.yml); one-time setup: Settings → Pages → Source: GitHub Actions).
+
+6. If you publish the extension on the Chrome Web Store, upload `reviewhub-extension-v0.2.0.zip` from the release.
 
 If the release workflow fails, fix it on the branch, delete the tag (`git push --delete origin v0.2.0 && git tag -d v0.2.0`) and tag again. Nothing reaches users until the pull request is merged.

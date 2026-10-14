@@ -16,5 +16,8 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 - Optional fields: use `#[serde(default, skip_serializing_if = "Option::is_none")]` so JSON never contains `null`, and structs carry `ts(export, optional_fields)` so TypeScript types match.
 - Scoring weights live in `crates/core/src/focus.rs`; keep the table in docs/reports.md in sync.
 - Extension: colours come from the Primer tokens in `extension/src/globals.css` (`bg-canvas`, `text-fg-muted`, `border-border`, …); raw Tailwind palette colours break dark mode. Report text is untrusted: render it with `Markdown`/`InlineMarkdown`, never `dangerouslySetInnerHTML`. The GitHub token stays in `chrome.storage.local` and is only sent to api.github.com.
-- Plugin: `plugin/bin/reviewhub` downloads the CLI release matching the plugin version. A plugin version must not reach `main` before its release exists (see RELEASING.md).
+- Plugin: `plugin/bin/reviewhub` downloads the CLI release matching the plugin version (or, when installed by `reviewhub init`, the version in the `VERSION` file next to it). A plugin version must not reach `main` before its release exists (see RELEASING.md).
+- `reviewhub init` compiles in the plugin's skills, subagent, launcher and hook script (`crates/cli/src/init.rs`), renaming `reviewhub:x` to `reviewhub-x`. When you add a cross-reference between plugin files, check the rename list; a test fails on leftovers.
+- The briefing comment (`crates/cli/src/briefing.rs`) is posted by a trusted account, so every piece of report text goes through `esc` (no HTML, no fake report markers, no @mentions).
+- The web app is the extension's review page built with `npm run build:web`; code that touches `chrome.*` must check `isExtension()` from `src/lib/settings.ts`.
 - The demo pull request (`fixtures/demo/bundle.json`) is used by the extension, the CLI tests and the docs. Keep it realistic.

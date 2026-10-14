@@ -2,6 +2,8 @@
 # coverage for every pull request as a ReviewHub metrics report.
 # Adjust the test command to produce coverage/lcov.info for your stack.
 # `reviewhub publish` reads the repository from GITHUB_REPOSITORY.
+# Comments posted with the workflow token don't trigger other workflows, so
+# this job refreshes the ReviewHub briefing itself.
 name: ReviewHub metrics
 
 on:
@@ -10,6 +12,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   metrics:
@@ -31,3 +34,4 @@ jobs:
         run: |
           reviewhub metrics --lcov coverage/lcov.info --commit "${{ github.event.pull_request.head.sha }}" > "$RUNNER_TEMP/metrics.json"
           reviewhub publish metrics "$RUNNER_TEMP/metrics.json" --pr "${{ github.event.pull_request.number }}"
+          reviewhub briefing "$GITHUB_REPOSITORY#${{ github.event.pull_request.number }}" --publish

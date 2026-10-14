@@ -15,6 +15,8 @@ The CLI reads GitHub with `GITHUB_TOKEN`, or your `gh auth login`.
 
 To use a CLI you built yourself, set `REVIEWHUB_BIN=/path/to/reviewhub`.
 
+Claude Code cloud sessions (including ones started from the Claude app) can't install plugins. For those, run `reviewhub init` in the repository: it puts these same skills, the subagent and the hooks into the repository's `.claude/` directory. See the [main README](../README.md#repository-setup-reviewhub-init).
+
 ## What's included
 
 | Component | Kind | What it does |

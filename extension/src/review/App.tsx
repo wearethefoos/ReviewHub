@@ -14,13 +14,10 @@ import { Verification } from "@/components/views/Verification";
 import type { Review } from "@/lib/core";
 import { formatPrRef, parsePrRef } from "@/lib/github";
 import { navigate, routeHref, useRoute, type TabId } from "@/lib/router";
-import { loadSettings } from "@/lib/settings";
+import { EXTENSION_URL, isExtension, loadSettings, openSettings } from "@/lib/settings";
 import { useReview } from "./useReview";
 
-function openOptions(event: React.MouseEvent) {
-  event.preventDefault();
-  chrome.runtime.openOptionsPage();
-}
+const openOptions = openSettings;
 
 function TopBar() {
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -89,7 +86,19 @@ function Home() {
             </p>
           )}
           <p className="mt-3 text-xs text-fg-muted">
-            Or click <span className="font-semibold">Open in ReviewHub</span> on any pull request on github.com.{" "}
+            {isExtension() ? (
+              <>
+                Or click <span className="font-semibold">Open in ReviewHub</span> on any pull request on github.com.{" "}
+              </>
+            ) : (
+              <>
+                On a computer, the{" "}
+                <a href={EXTENSION_URL} target="_blank" rel="noreferrer">
+                  Chrome extension
+                </a>{" "}
+                adds an Open in ReviewHub button to pull requests on github.com.{" "}
+              </>
+            )}
             {hasToken === false && (
               <>
                 Public repositories work without a token;{" "}

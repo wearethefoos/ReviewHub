@@ -1,6 +1,6 @@
 {
   "name": "reviewhub-extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "ReviewHub browser extension: review agent-authored GitHub pull requests by what matters.",
   "type": "module",
@@ -10,7 +10,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:web": "vite build --mode web"
   },
   "dependencies": {
     "@primer/octicons-react": "^19.40.0",

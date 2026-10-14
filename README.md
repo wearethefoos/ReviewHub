@@ -13,7 +13,7 @@ Agents produce more code than people can read line by line, and much of it doesn
 - **Security:** findings from a separate agent, each with a patch to apply or a prompt to hand to an agent.
 - **Focus ranking:** coverage of the changed lines, complexity, risk signals and the reports above rank every file as *Focus*, *Skim* or *Skip*, so the diff opens on the files that matter and collapses the rest.
 
-Nothing is hosted. ReviewHub is a browser extension and a Claude Code plugin; both talk to GitHub directly.
+Nothing runs on a server. ReviewHub is a Chrome extension, a static web app on GitHub Pages, a briefing comment on each pull request, and a Claude Code plugin; they all talk to GitHub directly.
 
 ![The briefing for the demo pull request](docs/screenshot-briefing.png)
 
@@ -29,6 +29,12 @@ Then:
 - For private repositories, and a higher rate limit than GitHub's 60 anonymous requests an hour, add a fine-grained token with read-only *Pull requests* and *Contents* access in the extension's settings. It stays in your browser and is only sent to `api.github.com`.
 - The extension's start page has a demo pull request that needs no token.
 
+### On your phone
+
+- **The briefing comment.** Repositories set up with `reviewhub init` get a workflow that keeps one ReviewHub comment on every pull request: blockers, deviations, decisions, what wasn't validated and which files to read, with links into the diff. It reads well in the GitHub mobile app.
+- **The web app** at <https://wearethefoos.github.io/ReviewHub/> is the extension's review page as a static site (the briefing comment links to it). Add it to your home screen. Public repositories work without a token; for private ones, add a token in its settings. The token stays in that browser tab unless you choose to remember it.
+- **Claude Code from the Claude app** (cloud sessions) can't install plugins, so `reviewhub init` puts the plugin's skills, subagent and hooks into the repository itself. See [Repository setup](#repository-setup-reviewhub-init).
+
 ### Claude Code plugin
 
 ```
@@ -41,6 +47,24 @@ Then:
 - `reviewhub:review-manifest`: Claude writes and publishes the manifest for pull requests it opens, in repositories that opt in by mentioning ReviewHub in their `CLAUDE.md` (a hook reminds it after `gh pr create`).
 
 The plugin brings the `reviewhub` CLI with it: on first use it downloads the release binary matching the plugin's version and checks it against the release's `SHA256SUMS`. Updating the plugin updates the CLI. See [`plugin/README.md`](plugin/README.md).
+
+### Repository setup: `reviewhub init`
+
+In a repository you want reviewed with ReviewHub:
+
+```sh
+reviewhub init        # then commit the files it lists
+```
+
+It writes:
+
+- `.claude/skills/reviewhub-review`, `reviewhub-manifest`, `reviewhub-security-review` and `.claude/agents/reviewhub-security-reviewer.md`: the plugin's skills and subagent, under repository names;
+- `.claude/reviewhub/`: a launcher pinned to the CLI version that ran `init`, and the hook scripts;
+- hooks in `.claude/settings.json`: at session start the pinned CLI goes on `PATH` (downloaded and checksum-verified on first use); after `gh pr create`, Claude is reminded to publish the manifest;
+- a ReviewHub section in `CLAUDE.md`, which opts the repository in;
+- `.github/workflows/reviewhub.yml`: the briefing comment (leave it out with `--no-workflow`).
+
+Repository files load in every Claude Code session, including cloud sessions started from the Claude app on your phone, so this works where plugins can't be installed. Run `reviewhub init` again with a newer CLI to update; `reviewhub init --check` exits with 1 when the files are out of date. With the plugin installed too, you'd get both sets of skills; one of the two is enough.
 
 ### CLI on its own
 
@@ -57,6 +81,7 @@ reviewhub review owner/repo#123            # the briefing: ask, focus files, sec
 reviewhub review owner/repo#123 --diff     # plus the Focus files' diffs, annotated inline
 reviewhub review owner/repo#123 --json     # bundle + focus analysis as JSON, for scripts and agents
 reviewhub review --bundle fixtures/demo/bundle.json   # the demo, offline
+reviewhub briefing owner/repo#123 [--publish]          # the PR briefing comment: print it, or create/update it
 
 reviewhub schema manifest                                   # JSON Schema to give an agent
 reviewhub validate manifest manifest.json                   # exit code 1 with readable errors if invalid
@@ -78,7 +103,7 @@ Each report has its own author, so no agent grades its own work. Reports are onl
 
 To set up a repository:
 
-1. Have the authoring agent publish a manifest with every pull request: install the plugin and opt the repository in, or have other agents follow [`plugin/skills/review-manifest/SKILL.md`](plugin/skills/review-manifest/SKILL.md).
+1. Run `reviewhub init` and commit the result: Claude Code then publishes a manifest with every pull request, and the briefing comment keeps reviewers up to date. Other agents can follow [`plugin/skills/review-manifest/SKILL.md`](plugin/skills/review-manifest/SKILL.md).
 2. Run an independent security review on each pull request: `/reviewhub:security-review`, or another agent prompted with [`plugin/agents/security-reviewer.md`](plugin/agents/security-reviewer.md).
 3. Publish coverage from CI, for example with [`docs/examples/reviewhub-metrics.yml`](docs/examples/reviewhub-metrics.yml).
 
@@ -88,7 +113,7 @@ To set up a repository:
 crates/core/       Rust: report types and validation, GitHub trust rules, diff parsing, focus scoring
 crates/cli/        Rust: the reviewhub binary (terminal briefing, publishing, GitHub client)
 crates/wasm/       Rust: reviewhub-core compiled to WebAssembly for the extension
-extension/         Chrome extension (Vite, React, Tailwind with GitHub's Primer colours)
+extension/         Chrome extension and the web app (Vite, React, Tailwind with GitHub's Primer colours)
 plugin/            Claude Code plugin: skills, security-reviewer subagent, hooks, CLI launcher
 .claude-plugin/    plugin marketplace (this repository)
 schemas/           JSON Schemas, generated from crates/core
@@ -107,6 +132,7 @@ cargo test -p reviewhub-core --features ts export_bindings            # regenera
 # Extension (needs: rustup target add wasm32-unknown-unknown; cargo install wasm-bindgen-cli at the Cargo.lock version)
 cd extension && npm ci
 npm run wasm && npm run build     # then load extension/dist unpacked
+npm run build:web                 # the web app in extension/dist-web (deployed to Pages from main)
 npm test && npm run typecheck && npm run lint
 
 # Plugin

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import "@/globals.css";
 import { Code } from "@/components/ui";
 import { createClient } from "@/lib/github";
-import { loadSettings, saveSettings } from "@/lib/settings";
+import { isExtension, loadSettings, saveSettings } from "@/lib/settings";
 
 type Check = { ok: boolean; message: string } | null;
 
@@ -23,6 +23,8 @@ async function checkToken(token: string): Promise<Check> {
 function Options() {
   const [token, setToken] = useState("");
   const [trusted, setTrusted] = useState("");
+  const [remember, setRemember] = useState(false);
+  const web = !isExtension();
   const [saved, setSaved] = useState(false);
   const [check, setCheck] = useState<Check>(null);
 
@@ -30,13 +32,14 @@ function Options() {
     loadSettings().then((s) => {
       setToken(s.token);
       setTrusted(s.trustedAuthors.join(", "));
+      setRemember(s.rememberToken);
     });
   }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const trustedAuthors = trusted.split(",").map((s) => s.trim()).filter(Boolean);
-    await saveSettings({ token: token.trim(), trustedAuthors });
+    await saveSettings({ token: token.trim(), trustedAuthors, rememberToken: remember });
     setSaved(true);
     setCheck(await checkToken(token.trim()));
   }
@@ -46,6 +49,11 @@ function Options() {
       <h1 className="flex items-center gap-2 text-2xl font-semibold">
         <CodeReviewIcon size={24} /> ReviewHub settings
       </h1>
+      {web && (
+        <a href="review.html" className="mt-1 inline-block text-sm">
+          ← Back to ReviewHub
+        </a>
+      )}
       <form onSubmit={submit} className="mt-6 space-y-6">
         <div>
           <label htmlFor="token" className="font-semibold">
@@ -57,7 +65,8 @@ function Options() {
               fine-grained token
             </a>{" "}
             with read-only <span className="font-medium">Pull requests</span> and <span className="font-medium">Contents</span> access to the repositories you
-            review. It is stored in this browser only and sent only to <Code>api.github.com</Code>.
+            review. {web ? "It stays in this browser tab unless you choose to remember it" : "It is stored in this browser only"} and is
+            only sent to <Code>api.github.com</Code>.
           </p>
           <input
             id="token"
@@ -72,6 +81,26 @@ function Options() {
             className="mt-2 w-full rounded-md border border-border bg-canvas px-3 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
           />
         </div>
+        {web && (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => {
+                setRemember(e.target.checked);
+                setSaved(false);
+              }}
+              className="mt-1"
+            />
+            <span>
+              <span className="font-medium">Remember the token on this device.</span>{" "}
+              <span className="text-fg-muted">
+                This web app runs on a github.io address, which other GitHub Pages sites of the same owner share. Only remember the
+                token on a device you trust, and prefer a read-only token.
+              </span>
+            </span>
+          </label>
+        )}
         <div>
           <label htmlFor="trusted" className="font-semibold">
             Also trust reports from

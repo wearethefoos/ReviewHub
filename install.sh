@@ -11,14 +11,38 @@ set -eu
 
 repo=wearethefoos/ReviewHub
 dir="${REVIEWHUB_INSTALL_DIR:-$HOME/.local/bin}"
-base="${REVIEWHUB_RELEASE_BASE_URL:-https://github.com/$repo/releases/download}"
 
 fail() {
   echo "install.sh: $*" >&2
   exit 1
 }
 download() {
-  if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"; else wget -q -t 3 -O "$2" "$1"; fi
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1" 2>/dev/null; else wget -q -t 3 -O "$2" "$1"; fi
+}
+token() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then echo "$GITHUB_TOKEN"; elif [ -n "${GH_TOKEN:-}" ]; then echo "$GH_TOKEN"; elif command -v gh >/dev/null 2>&1; then gh auth token 2>/dev/null || true; fi
+}
+api_curl() {
+  if [ -n "$auth" ]; then curl -fsSL --retry 3 -H "Authorization: Bearer $auth" "$@" 2>/dev/null; else curl -fsSL --retry 3 "$@" 2>/dev/null; fi
+}
+# Same as plugin/bin/reviewhub: release assets through the GitHub API, for private repositories.
+api_download() { # name file
+  command -v curl >/dev/null 2>&1 || return 1
+  api="${GITHUB_API_URL:-https://api.github.com}"
+  auth=$(token)
+  [ -f "$tmp/release.json" ] || api_curl -o "$tmp/release.json" "$api/repos/$repo/releases/tags/v$version" || return 1
+  id=$(tr -d ' \t\r\n' <"$tmp/release.json" | tr ',{}[]' '\n\n\n\n\n' | awk -v name="\"name\":\"$1\"" '
+    /^"url":".*\/releases\/assets\/[0-9]+"$/ { n = $0; sub(/"$/, "", n); sub(/.*\//, "", n); last = n }
+    $0 == name && last != "" { print last; exit }')
+  [ -n "$id" ] || return 1
+  api_curl -H "Accept: application/octet-stream" -o "$2" "$api/repos/$repo/releases/assets/$id"
+}
+fetch() { # name file
+  if [ -n "${REVIEWHUB_RELEASE_BASE_URL:-}" ]; then
+    download "$REVIEWHUB_RELEASE_BASE_URL/v$version/$1" "$2"
+  else
+    download "https://github.com/$repo/releases/download/v$version/$1" "$2" || api_download "$1" "$2"
+  fi
 }
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi
@@ -26,11 +50,16 @@ sha256() {
 
 version="${REVIEWHUB_VERSION:-}"
 if [ -z "$version" ]; then
-  # github.com/<repo>/releases/latest redirects to .../releases/tag/v<version>
-  url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest") || fail "can't find the latest release"
+  # github.com/<repo>/releases/latest redirects to .../releases/tag/v<version>;
+  # for a private repository, ask the API instead.
+  url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest" 2>/dev/null || true)
   case "$url" in
     */releases/tag/v*) version=${url##*/v} ;;
-    *) fail "$repo has no release yet" ;;
+    *)
+      auth=$(token)
+      version=$(api_curl "${GITHUB_API_URL:-https://api.github.com}/repos/$repo/releases/latest" | tr -d ' \t\r\n' | tr ',' '\n' | sed -n 's/^"tag_name":"v\(.*\)"$/\1/p')
+      [ -n "$version" ] || fail "can't find the latest release of $repo"
+      ;;
   esac
 fi
 
@@ -53,8 +82,8 @@ asset="reviewhub-$arch-$os$exe"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 echo "Installing the ReviewHub CLI v$version ($arch-$os) to $dir"
-download "$base/v$version/SHA256SUMS" "$tmp/SHA256SUMS" || fail "can't download SHA256SUMS for v$version"
-download "$base/v$version/$asset" "$tmp/$asset" || fail "can't download $asset"
+fetch SHA256SUMS "$tmp/SHA256SUMS" || fail "can't download SHA256SUMS for v$version"
+fetch "$asset" "$tmp/$asset" || fail "can't download $asset"
 expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")
 [ -n "$expected" ] && [ "$expected" = "$(sha256 "$tmp/$asset")" ] || fail "checksum mismatch for $asset; not installing it"
 

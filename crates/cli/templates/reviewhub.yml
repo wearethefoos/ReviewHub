@@ -1,0 +1,42 @@
+# ReviewHub briefing: keeps one comment on every pull request with what needs a
+# reviewer's judgement, readable anywhere, including the GitHub mobile app.
+# Installed by `reviewhub init` (ReviewHub {{VERSION}}); re-run it to update.
+name: ReviewHub briefing
+
+on:
+  # pull_request_target so pull requests from forks can be commented on too.
+  # Safe here: this workflow never checks out or runs the pull request's code.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Report comments (manifest, security, metrics) refresh the briefing.
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: reviewhub-briefing-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  briefing:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+       contains(github.event.comment.body, '<!-- reviewhub:') &&
+       !contains(github.event.comment.body, '<!-- reviewhub:briefing -->'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install the ReviewHub CLI
+        env:
+          REVIEWHUB_VERSION: "{{VERSION}}"
+          REVIEWHUB_INSTALL_DIR: ${{ runner.temp }}/reviewhub
+        run: curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v{{VERSION}}/install.sh | sh
+      - name: Publish the briefing
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: '"$RUNNER_TEMP/reviewhub/reviewhub" briefing "$GITHUB_REPOSITORY#$PR" --publish'
