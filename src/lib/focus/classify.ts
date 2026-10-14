@@ -57,7 +57,8 @@ export function detectRole(path: string): FileRole {
 }
 
 const SENSITIVE: [RegExp, string][] = [
-  [/auth(?!or)|login|session|oauth|sso|jwt/i, "authentication"],
+  // No lookaround: the Rust CLI uses the same patterns. "auth" but not "author".
+  [/auth($|[^o]|o($|[^r]))|login|session|oauth|sso|jwt/i, "authentication"],
   [/permission|rbac|acl|policy|role/i, "authorization"],
   [/crypt|cipher|hash|sign(ing|ature)|hmac/i, "cryptography"],
   [/secret|credential|token|password|api[-_]?key/i, "secrets"],

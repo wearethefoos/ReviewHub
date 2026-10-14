@@ -1,0 +1,635 @@
+{
+  "pr": {
+    "owner": "demo",
+    "repo": "acme-shop",
+    "number": 128,
+    "title": "Add partial refunds to the payments API",
+    "body": "Adds partial refunds behind the `partialRefunds` flag. See the ReviewHub briefing for decisions, validation and rollout.",
+    "state": "open",
+    "draft": false,
+    "author": {
+      "login": "claude[bot]",
+      "avatarUrl": ""
+    },
+    "baseRef": "main",
+    "headRef": "claude/partial-refunds",
+    "headSha": "4f1c2e9a7b3d5c8e0f6a1b2c3d4e5f6a7b8c9d0e",
+    "htmlUrl": "",
+    "createdAt": "2026-10-12T09:41:00Z",
+    "additions": 219,
+    "deletions": 2,
+    "changedFiles": 12,
+    "commits": 6
+  },
+  "files": [
+    {
+      "path": "src/payments/refunds.ts",
+      "status": "added",
+      "additions": 56,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,56 @@\n+import { db } from \"../db\";\n+import { redis } from \"../lib/redis\";\n+import { allocate, type Money } from \"../lib/money\";\n+import { emitEvent } from \"./events\";\n+\n+export interface RefundRequest {\n+  orderId: string;\n+  amount: Money;\n+  reason?: string;\n+  idempotencyKey: string;\n+}\n+\n+export class RefundError extends Error {\n+  constructor(\n+    public code: \"ORDER_NOT_FOUND\" | \"ORDER_NOT_CAPTURED\" | \"AMOUNT_EXCEEDS_REMAINING\",\n+    message: string,\n+  ) {\n+    super(message);\n+  }\n+}\n+\n+const IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;\n+\n+export async function createRefund(req: RefundRequest) {\n+  const cached = await redis.get(`refund:idem:${req.idempotencyKey}`);\n+  if (cached) return JSON.parse(cached);\n+\n+  const order = await db.one(\n+    `SELECT id, status, captured_amount, refunded_amount, currency, line_items FROM orders WHERE id = '${req.orderId}'`,\n+  );\n+  if (!order) throw new RefundError(\"ORDER_NOT_FOUND\", `Order ${req.orderId} not found`);\n+  if (order.status !== \"captured\") {\n+    throw new RefundError(\"ORDER_NOT_CAPTURED\", \"Only captured orders can be refunded\");\n+  }\n+\n+  const remaining = order.captured_amount - order.refunded_amount;\n+  if (req.amount.cents > remaining) {\n+    throw new RefundError(\"AMOUNT_EXCEEDS_REMAINING\", `Refund exceeds remaining ${remaining}`);\n+  }\n+\n+  const lineItems = allocate(req.amount, order.line_items.map((li: { cents: number }) => li.cents));\n+  const refund = await db.transaction(async (tx) => {\n+    const row = await tx.insert(\"refunds\", {\n+      order_id: order.id,\n+      amount_cents: req.amount.cents,\n+      currency: order.currency,\n+      reason: req.reason ?? null,\n+    });\n+    await tx.update(\"orders\", order.id, { refunded_amount: order.refunded_amount + req.amount.cents });\n+    return row;\n+  });\n+\n+  await redis.set(`refund:idem:${req.idempotencyKey}`, JSON.stringify(refund), \"EX\", IDEMPOTENCY_TTL_SECONDS);\n+  await emitEvent(\"refund.created\", { refundId: refund.id, orderId: order.id, lineItems });\n+  return refund;\n+}"
+    },
+    {
+      "path": "src/api/routes/refunds.ts",
+      "status": "added",
+      "additions": 33,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,33 @@\n+import { Router } from \"express\";\n+import { z } from \"zod\";\n+import { flags } from \"../../config/featureFlags\";\n+import { requireMerchant } from \"../middleware/auth\";\n+import { createRefund, RefundError } from \"../../payments/refunds\";\n+\n+const body = z.object({\n+  amount: z.object({ cents: z.number().int().positive(), currency: z.string().length(3) }),\n+  reason: z.string().max(500).optional(),\n+});\n+\n+export const refundsRouter = Router();\n+\n+refundsRouter.post(\"/orders/:orderId/refunds\", requireMerchant, async (req, res) => {\n+  if (!flags.partialRefunds) return res.status(404).end();\n+\n+  const idempotencyKey = req.header(\"Idempotency-Key\");\n+  if (!idempotencyKey) return res.status(400).json({ error: \"IDEMPOTENCY_KEY_REQUIRED\" });\n+\n+  const parsed = body.safeParse(req.body);\n+  if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });\n+\n+  try {\n+    const refund = await createRefund({ orderId: req.params.orderId, ...parsed.data, idempotencyKey });\n+    return res.status(201).json(refund);\n+  } catch (err) {\n+    if (err instanceof RefundError) {\n+      const status = err.code === \"ORDER_NOT_FOUND\" ? 404 : 409;\n+      return res.status(status).json({ error: err.code, message: err.message });\n+    }\n+    throw err;\n+  }\n+});"
+    },
+    {
+      "path": "src/lib/money.ts",
+      "status": "modified",
+      "additions": 28,
+      "deletions": 1,
+      "patch": "@@ -8,8 +8,35 @@\n   return { cents: a.cents + b.cents, currency: a.currency };\n }\n \n export function percentOf(m: Money, pct: number): Money {\n-  return { cents: Math.round((m.cents * pct) / 100), currency: m.currency };\n+  return { cents: roundHalfEven((m.cents * pct) / 100), currency: m.currency };\n+}\n+\n+/** Banker's rounding: ties go to the nearest even number. */\n+export function roundHalfEven(value: number): number {\n+  const floor = Math.floor(value);\n+  const diff = value - floor;\n+  if (diff > 0.5) return floor + 1;\n+  if (diff < 0.5) return floor;\n+  return floor % 2 === 0 ? floor : floor + 1;\n+}\n+\n+/**\n+ * Splits `total` across `weights` proportionally. Remainders go to the\n+ * parts with the largest fractional share so the parts always sum to the total.\n+ */\n+export function allocate(total: Money, weights: number[]): Money[] {\n+  const sum = weights.reduce((a, b) => a + b, 0);\n+  if (sum === 0) return weights.map(() => ({ cents: 0, currency: total.currency }));\n+  const raw = weights.map((w) => (total.cents * w) / sum);\n+  const parts = raw.map(Math.floor);\n+  let remainder = total.cents - parts.reduce((a, b) => a + b, 0);\n+  const order = raw.map((r, i) => [r - Math.floor(r), i] as const).sort((a, b) => b[0] - a[0]);\n+  for (const [, i] of order) {\n+    if (remainder-- <= 0) break;\n+    parts[i] += 1;\n+  }\n+  return parts.map((cents) => ({ cents, currency: total.currency }));\n }\n \n function assertSameCurrency(a: Money, b: Money) {"
+    },
+    {
+      "path": "src/payments/refunds.test.ts",
+      "status": "added",
+      "additions": 40,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,40 @@\n+import { beforeEach, describe, expect, it } from \"vitest\";\n+import fc from \"fast-check\";\n+import { createRefund, RefundError } from \"./refunds\";\n+import { allocate } from \"../lib/money\";\n+import { seedOrder, resetDb } from \"../../test/db\";\n+\n+describe(\"createRefund\", () => {\n+  beforeEach(resetDb);\n+\n+  it(\"refunds part of a captured order\", async () => {\n+    const order = await seedOrder({ captured: 10_000 });\n+    const refund = await createRefund({ orderId: order.id, amount: { cents: 2_500, currency: \"EUR\" }, idempotencyKey: \"k1\" });\n+    expect(refund).toMatchSnapshot();\n+  });\n+\n+  it(\"rejects refunds above the remaining amount\", async () => {\n+    const order = await seedOrder({ captured: 10_000, refunded: 9_000 });\n+    await expect(\n+      createRefund({ orderId: order.id, amount: { cents: 1_001, currency: \"EUR\" }, idempotencyKey: \"k2\" }),\n+    ).rejects.toThrow(RefundError);\n+  });\n+\n+  it(\"returns the same refund for a repeated idempotency key\", async () => {\n+    const order = await seedOrder({ captured: 10_000 });\n+    const req = { orderId: order.id, amount: { cents: 100, currency: \"EUR\" }, idempotencyKey: \"k3\" };\n+    expect(await createRefund(req)).toEqual(await createRefund(req));\n+  });\n+});\n+\n+describe(\"allocate\", () => {\n+  it(\"always sums to the total\", () => {\n+    fc.assert(\n+      fc.property(fc.nat(1_000_000), fc.array(fc.nat(10_000), { minLength: 1 }), (cents, weights) => {\n+        const parts = allocate({ cents, currency: \"EUR\" }, weights);\n+        const sum = parts.reduce((a, p) => a + p.cents, 0);\n+        return weights.every((w) => w === 0) ? sum === 0 : sum === cents;\n+      }),\n+    );\n+  });\n+});"
+    },
+    {
+      "path": "db/migrations/20261012_add_refunds.sql",
+      "status": "added",
+      "additions": 12,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,12 @@\n+CREATE TABLE refunds (\n+  id BIGSERIAL PRIMARY KEY,\n+  order_id BIGINT NOT NULL REFERENCES orders(id),\n+  amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),\n+  currency CHAR(3) NOT NULL,\n+  reason TEXT,\n+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n+);\n+\n+CREATE INDEX refunds_order_id_idx ON refunds(order_id);\n+\n+ALTER TABLE orders ADD COLUMN refunded_amount BIGINT NOT NULL DEFAULT 0;"
+    },
+    {
+      "path": "src/config/featureFlags.ts",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 0,
+      "patch": "@@ -3,3 +3,4 @@\n export const flags = {\n   newCheckout: env(\"FLAG_NEW_CHECKOUT\", true),\n+  partialRefunds: env(\"FLAG_PARTIAL_REFUNDS\", false),\n };"
+    },
+    {
+      "path": "src/payments/webhooks.ts",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -1,3 +1,3 @@\n import type { Request, Response } from \"express\";\n-import { emitEvent } from \"./eventBus\";\n+import { emitEvent } from \"./events\";\n import { verifySignature } from \"./signature\";"
+    },
+    {
+      "path": "src/payments/events.ts",
+      "status": "renamed",
+      "additions": 0,
+      "deletions": 0,
+      "previousPath": "src/payments/eventBus.ts"
+    },
+    {
+      "path": "src/i18n/en.json",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 0,
+      "patch": "@@ -14,2 +14,5 @@\n   \"orders.notFound\": \"Order not found\",\n+  \"refunds.amountExceedsRemaining\": \"The refund is larger than the amount left to refund.\",\n+  \"refunds.orderNotCaptured\": \"Only paid orders can be refunded.\",\n+  \"refunds.idempotencyKeyRequired\": \"Send an Idempotency-Key header with every refund request.\",\n   \"orders.shipped\": \"Order shipped\""
+    },
+    {
+      "path": "docs/api/refunds.md",
+      "status": "added",
+      "additions": 20,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,20 @@\n+# Refunds\n+\n+Create a full or partial refund for a captured order.\n+\n+## `POST /orders/:orderId/refunds`\n+\n+| Header            | Required | Description                                 |\n+| ----------------- | -------- | ------------------------------------------- |\n+| `Idempotency-Key` | yes      | Retries with the same key return the same refund. |\n+\n+```json\n+{ \"amount\": { \"cents\": 2500, \"currency\": \"EUR\" }, \"reason\": \"Damaged item\" }\n+```\n+\n+### Responses\n+\n+- `201` the refund was created\n+- `404` the order does not exist\n+- `409` the order is not captured, or the amount exceeds what is left to refund\n+- `422` the request body is invalid"
+    },
+    {
+      "path": "src/payments/__snapshots__/refunds.test.ts.snap",
+      "status": "added",
+      "additions": 11,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,11 @@\n+// Vitest Snapshot v1\n+\n+exports[`createRefund > refunds part of a captured order 1`] = `\n+{\n+  \"amount_cents\": 2500,\n+  \"currency\": \"EUR\",\n+  \"id\": 1,\n+  \"order_id\": 1,\n+  \"reason\": null,\n+}\n+`;"
+    },
+    {
+      "path": "package-lock.json",
+      "status": "modified",
+      "additions": 14,
+      "deletions": 0,
+      "patch": "@@ -4211,2 +4211,16 @@\n     \"node_modules/fast-deep-equal\": {\n+    \"node_modules/fast-check\": {\n+      \"version\": \"3.23.2\",\n+      \"resolved\": \"https://registry.npmjs.org/fast-check/-/fast-check-3.23.2.tgz\",\n+      \"integrity\": \"sha512-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n+      \"dev\": true,\n+      \"license\": \"MIT\"\n+    },\n+    \"node_modules/pure-rand\": {\n+      \"version\": \"3.23.2\",\n+      \"resolved\": \"https://registry.npmjs.org/pure-rand/-/pure-rand-3.23.2.tgz\",\n+      \"integrity\": \"sha512-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n+      \"dev\": true,\n+      \"license\": \"MIT\"\n+    },\n     \"node_modules/fast-glob\": {"
+    }
+  ],
+  "reports": {
+    "manifest": {
+      "source": {
+        "type": "fixture"
+      },
+      "data": {
+        "version": "1",
+        "agent": {
+          "name": "Claude Code",
+          "sessionUrl": "https://claude.ai/code"
+        },
+        "prompt": {
+          "original": "Add support for partial refunds to the payments API. Merchants should be able to refund part of an order via `PUT /refunds/:orderId` with an amount. Make sure we never refund more than was captured, and put it behind a feature flag. Use our existing money helpers.",
+          "followUps": [
+            "Also make sure retries from the merchant's side don't create duplicate refunds."
+          ]
+        },
+        "summary": "Adds `POST /orders/:orderId/refunds` behind the `partialRefunds` flag. A refund is stored in a new `refunds` table, the order's `refunded_amount` is updated in the same transaction, and the refund is spread over the order's line items for the existing `refund.created` worker. Retries are de-duplicated with an `Idempotency-Key` header.",
+        "deviations": [
+          {
+            "id": "endpoint-shape",
+            "title": "Endpoint is `POST /orders/:orderId/refunds`, not `PUT /refunds/:orderId`",
+            "requested": "`PUT /refunds/:orderId` with an amount.",
+            "delivered": "`POST /orders/:orderId/refunds` that creates a new refund resource on each call.",
+            "reason": "An order can now have several partial refunds, so each call creates a resource rather than replacing one. `PUT` keyed by order id would make a second partial refund overwrite the first. Retry safety comes from the `Idempotency-Key` header instead.",
+            "severity": "major",
+            "files": [
+              {
+                "path": "src/api/routes/refunds.ts",
+                "lines": [
+                  14,
+                  14
+                ]
+              }
+            ]
+          },
+          {
+            "id": "money-rounding",
+            "title": "Changed rounding in the shared `percentOf` helper",
+            "requested": "Use the existing money helpers.",
+            "delivered": "`percentOf` now uses banker's rounding (half to even) instead of `Math.round`.",
+            "reason": "Half-up rounding over many line items made allocated parts drift from the refund total by a cent. The new `allocate` helper needs consistent rounding, so I changed `percentOf` to match. This also affects the existing callers of `percentOf` (discounts and tax).",
+            "severity": "major",
+            "files": [
+              {
+                "path": "src/lib/money.ts",
+                "lines": [
+                  12,
+                  12
+                ]
+              }
+            ]
+          }
+        ],
+        "decisions": [
+          {
+            "id": "idempotency-store",
+            "title": "Idempotency keys are stored in Redis with a 24 hour TTL",
+            "context": "The follow-up asked that merchant retries never create duplicate refunds. The prompt didn't say where to remember keys or for how long.",
+            "chosen": "Cache the created refund in Redis under the idempotency key for 24 hours.",
+            "rationale": "Redis is already a dependency, lookups are cheap, and 24 hours matches the retry window of our SDKs.",
+            "impact": "high",
+            "alternatives": [
+              {
+                "title": "Unique constraint in Postgres",
+                "description": "Store `idempotency_key` on the `refunds` row with a unique index on `(merchant_id, idempotency_key)`.",
+                "tradeoffs": "Durable and transactional: survives a Redis flush and cannot race. Needs one more column and index in the migration.",
+                "prompt": "Replace the Redis-based idempotency in src/payments/refunds.ts with a unique index on refunds(merchant_id, idempotency_key). Add the column to the migration, insert inside the existing transaction, and on a unique violation return the existing refund. Remove the Redis calls and update the tests."
+              },
+              {
+                "title": "Shared idempotency middleware",
+                "description": "Handle the `Idempotency-Key` header in an Express middleware for all mutating endpoints.",
+                "tradeoffs": "Reusable across endpoints, but a larger change than this PR asked for."
+              }
+            ],
+            "files": [
+              {
+                "path": "src/payments/refunds.ts",
+                "lines": [
+                  25,
+                  26
+                ]
+              },
+              {
+                "path": "src/payments/refunds.ts",
+                "lines": [
+                  53,
+                  53
+                ]
+              }
+            ]
+          },
+          {
+            "id": "allocation",
+            "title": "Partial refunds are spread over line items proportionally",
+            "context": "The downstream `refund.created` worker needs per-line-item amounts for tax reporting. The prompt only specified a total amount.",
+            "chosen": "Split the amount proportionally by line item value, using the largest-remainder method so parts always add up.",
+            "rationale": "It's predictable and needs no extra input from merchants.",
+            "impact": "medium",
+            "alternatives": [
+              {
+                "title": "Let merchants specify line items",
+                "description": "Accept an optional `lineItems` array in the request body.",
+                "tradeoffs": "More accurate for item-level returns, but a bigger API surface to document and validate.",
+                "prompt": "Extend POST /orders/:orderId/refunds to accept an optional lineItems array of { lineItemId, cents }. Validate that it sums to amount.cents and fall back to proportional allocation when it's missing."
+              }
+            ],
+            "files": [
+              {
+                "path": "src/payments/refunds.ts",
+                "lines": [
+                  41,
+                  41
+                ]
+              }
+            ]
+          },
+          {
+            "id": "conflict-status",
+            "title": "Business rule violations return 409",
+            "context": "Refunding more than is left, or refunding an uncaptured order, isn't a malformed request.",
+            "chosen": "Return 409 Conflict with an error code. 422 is reserved for invalid bodies.",
+            "rationale": "Matches how the orders API already reports state conflicts.",
+            "impact": "low",
+            "alternatives": [
+              {
+                "title": "422 for everything",
+                "description": "Use 422 for both validation and business-rule errors."
+              }
+            ],
+            "files": [
+              {
+                "path": "src/api/routes/refunds.ts",
+                "lines": [
+                  28,
+                  28
+                ]
+              }
+            ]
+          }
+        ],
+        "validation": [
+          {
+            "id": "unit",
+            "kind": "unit-test",
+            "description": "Refund service unit tests against the test database",
+            "command": "npm test -- refunds",
+            "result": "passed",
+            "evidence": "✓ src/payments/refunds.test.ts (4 tests) 412ms\nTest Files  1 passed (1)\n     Tests  4 passed (4)",
+            "files": [
+              {
+                "path": "src/payments/refunds.ts"
+              }
+            ]
+          },
+          {
+            "id": "property",
+            "kind": "unit-test",
+            "description": "Property test: `allocate` always sums to the total (fast-check, 1000 runs)",
+            "command": "npm test -- refunds -t allocate",
+            "result": "passed",
+            "files": [
+              {
+                "path": "src/lib/money.ts"
+              }
+            ]
+          },
+          {
+            "id": "types",
+            "kind": "typecheck",
+            "description": "TypeScript compiles without errors",
+            "command": "npm run typecheck",
+            "result": "passed",
+            "files": []
+          },
+          {
+            "id": "lint",
+            "kind": "lint",
+            "description": "ESLint passes",
+            "command": "npm run lint",
+            "result": "passed",
+            "files": []
+          },
+          {
+            "id": "manual",
+            "kind": "manual",
+            "description": "Called the endpoint with curl against a local server: happy path, over-refund and missing idempotency key",
+            "result": "partial",
+            "evidence": "201 Created, 409 AMOUNT_EXCEEDS_REMAINING, 400 IDEMPOTENCY_KEY_REQUIRED. Didn't check the flag-off path.",
+            "files": []
+          },
+          {
+            "id": "integration",
+            "kind": "integration-test",
+            "description": "Concurrent refunds against a real Postgres",
+            "result": "skipped",
+            "evidence": "No Postgres available in the agent sandbox.",
+            "files": []
+          }
+        ],
+        "gaps": [
+          {
+            "id": "concurrency",
+            "title": "Two refunds for the same order at the same time",
+            "why": "The sandbox has no Postgres, so concurrent transactions couldn't be exercised.",
+            "howToValidate": "Write an integration test that fires two refunds for the same order in parallel and asserts the total never exceeds the captured amount. Run it against the docker-compose Postgres.",
+            "owner": "agent",
+            "effort": "small",
+            "files": [
+              {
+                "path": "src/payments/refunds.ts",
+                "lines": [
+                  36,
+                  39
+                ]
+              }
+            ]
+          },
+          {
+            "id": "migration-lock",
+            "title": "Migration lock time on the `orders` table",
+            "why": "`orders` has around 40M rows in production. I couldn't measure how long the `ALTER TABLE` holds its lock.",
+            "howToValidate": "Run the migration on a staging snapshot and time it. On Postgres 11+ adding a column with a constant default shouldn't rewrite the table. Confirm the production version.",
+            "owner": "ops",
+            "effort": "small",
+            "files": [
+              {
+                "path": "db/migrations/20261012_add_refunds.sql",
+                "lines": [
+                  12,
+                  12
+                ]
+              }
+            ]
+          },
+          {
+            "id": "route-tests",
+            "title": "No HTTP-level tests for the refunds route",
+            "why": "I tested the service directly. The route's flag check, header handling and status mapping are only covered by the manual curl run.",
+            "howToValidate": "Add supertest cases for: flag off returns 404, missing header returns 400, invalid body returns 422, and each RefundError maps to the right status.",
+            "owner": "agent",
+            "effort": "small",
+            "files": [
+              {
+                "path": "src/api/routes/refunds.ts"
+              }
+            ]
+          },
+          {
+            "id": "provider",
+            "title": "End to end with the payment provider sandbox",
+            "why": "No provider sandbox credentials were available, so the `refund.created` worker never ran against this event shape.",
+            "howToValidate": "With the flag on in staging, refund a sandbox order partially twice and check both refunds show up at the provider with the right amounts.",
+            "owner": "human",
+            "effort": "medium",
+            "files": []
+          }
+        ],
+        "rollout": [
+          {
+            "id": "api-shape",
+            "title": "Confirm the endpoint shape with the mobile team",
+            "description": "The endpoint differs from the one in the original request (see the deviations).",
+            "owner": "human",
+            "when": "before-merge",
+            "blocking": true
+          },
+          {
+            "id": "callers",
+            "title": "Check existing `percentOf` callers still give the expected totals",
+            "description": "Discount and tax calculations now use banker's rounding.",
+            "owner": "agent",
+            "when": "before-merge",
+            "blocking": true,
+            "prompt": "Find every caller of percentOf in src/. For each one, add a test case on a .5 cent boundary showing the old and new result, and list any that change customer-facing totals."
+          },
+          {
+            "id": "migrate",
+            "title": "Run the migration on staging, then production",
+            "description": "",
+            "owner": "ops",
+            "when": "after-merge",
+            "blocking": true
+          },
+          {
+            "id": "flag",
+            "title": "Turn on `FLAG_PARTIAL_REFUNDS` for internal merchants, then 10%",
+            "description": "",
+            "owner": "human",
+            "when": "after-deploy",
+            "blocking": false
+          },
+          {
+            "id": "alert",
+            "title": "Add an alert on `refund.created` worker failures",
+            "description": "",
+            "owner": "ops",
+            "when": "after-deploy",
+            "blocking": false
+          },
+          {
+            "id": "changelog",
+            "title": "Add the endpoint to the public API changelog",
+            "description": "",
+            "owner": "agent",
+            "when": "after-merge",
+            "blocking": false,
+            "prompt": "Add an entry to docs/changelog.md for the new POST /orders/:orderId/refunds endpoint, linking to docs/api/refunds.md."
+          }
+        ],
+        "files": [
+          {
+            "path": "src/payments/refunds.ts",
+            "role": "core",
+            "note": "The refund service: validation, persistence and idempotency.",
+            "reviewHint": "must-review"
+          },
+          {
+            "path": "src/api/routes/refunds.ts",
+            "role": "core",
+            "note": "HTTP layer: flag check, header and body validation, error mapping."
+          },
+          {
+            "path": "src/lib/money.ts",
+            "role": "supporting",
+            "note": "Shared helper. The `percentOf` change affects existing callers."
+          },
+          {
+            "path": "src/payments/webhooks.ts",
+            "role": "mechanical",
+            "note": "Import path update after renaming eventBus.ts to events.ts.",
+            "reviewHint": "skip"
+          },
+          {
+            "path": "src/payments/events.ts",
+            "role": "mechanical",
+            "note": "Renamed from eventBus.ts, no content changes.",
+            "reviewHint": "skip"
+          },
+          {
+            "path": "src/i18n/en.json",
+            "role": "mechanical",
+            "note": "Error messages for the new error codes.",
+            "reviewHint": "skip"
+          },
+          {
+            "path": "package-lock.json",
+            "role": "generated",
+            "note": "Adds fast-check as a dev dependency.",
+            "reviewHint": "skip"
+          },
+          {
+            "path": "src/payments/__snapshots__/refunds.test.ts.snap",
+            "role": "generated",
+            "reviewHint": "skip"
+          },
+          {
+            "path": "docs/api/refunds.md",
+            "role": "docs",
+            "reviewHint": "skim"
+          }
+        ]
+      }
+    },
+    "security": {
+      "source": {
+        "type": "fixture"
+      },
+      "data": {
+        "version": "1",
+        "scanner": {
+          "name": "ReviewHub security agent"
+        },
+        "summary": "One critical and two high findings in the new refund path. The SQL injection and missing ownership check together let any merchant refund any order. Fix both before merging.",
+        "findings": [
+          {
+            "id": "sqli",
+            "title": "SQL injection through orderId",
+            "severity": "critical",
+            "category": "CWE-89",
+            "description": "`orderId` comes straight from the URL and is interpolated into the SQL string. A request to `/orders/1' OR '1'='1/refunds` changes the query.",
+            "file": "src/payments/refunds.ts",
+            "lines": [
+              28,
+              30
+            ],
+            "confidence": "high",
+            "suggestion": {
+              "explanation": "Use a parameterized query so the driver escapes the value.",
+              "diff": "--- a/src/payments/refunds.ts\n+++ b/src/payments/refunds.ts\n@@ -28,3 +28,4 @@\n   const order = await db.one(\n-    `SELECT id, status, captured_amount, refunded_amount, currency, line_items FROM orders WHERE id = '${req.orderId}'`,\n+    \"SELECT id, status, captured_amount, refunded_amount, currency, line_items FROM orders WHERE id = $1\",\n+    [req.orderId],\n   );",
+              "prompt": "In src/payments/refunds.ts, replace the interpolated SQL in createRefund with a parameterized query. Then search src/ for other template-literal SQL passed to db.one, db.many or db.query and fix those the same way."
+            }
+          },
+          {
+            "id": "idor",
+            "title": "Merchants can refund orders that belong to other merchants",
+            "severity": "high",
+            "category": "CWE-639",
+            "description": "`requireMerchant` authenticates the caller, but nothing checks that the order belongs to that merchant. Any merchant who can guess an order id can refund it.",
+            "file": "src/api/routes/refunds.ts",
+            "lines": [
+              24,
+              24
+            ],
+            "confidence": "high",
+            "suggestion": {
+              "explanation": "Pass the authenticated merchant through and filter the order lookup by it, so foreign orders look the same as missing ones (404).",
+              "diff": "--- a/src/api/routes/refunds.ts\n+++ b/src/api/routes/refunds.ts\n@@ -24,1 +24,6 @@\n-    const refund = await createRefund({ orderId: req.params.orderId, ...parsed.data, idempotencyKey });\n+    const refund = await createRefund({\n+      merchantId: req.merchant.id,\n+      orderId: req.params.orderId,\n+      ...parsed.data,\n+      idempotencyKey,\n+    });",
+              "prompt": "Add a required merchantId to RefundRequest in src/payments/refunds.ts and filter the order lookup with `AND merchant_id = $2`. Pass req.merchant.id from the route. Add a test showing a merchant gets 404 for another merchant's order."
+            }
+          },
+          {
+            "id": "toctou",
+            "title": "Concurrent refunds can exceed the captured amount",
+            "severity": "high",
+            "category": "CWE-362",
+            "description": "The remaining amount is checked before the transaction starts, and the update writes an absolute value. Two parallel requests can both pass the check, and the second write overwrites the first.",
+            "file": "src/payments/refunds.ts",
+            "lines": [
+              36,
+              39
+            ],
+            "confidence": "medium",
+            "suggestion": {
+              "explanation": "Lock the order row inside the transaction (`SELECT … FOR UPDATE`), check the remaining amount there, and update with `refunded_amount = refunded_amount + $1`.",
+              "prompt": "In src/payments/refunds.ts, move the order lookup and the remaining-amount check inside db.transaction and lock the row with SELECT ... FOR UPDATE. Update refunded_amount relative to its current value. Add an integration test that fires two refunds in parallel and asserts only one succeeds when together they exceed the captured amount."
+            }
+          },
+          {
+            "id": "idem-scope",
+            "title": "Idempotency keys aren't scoped to the merchant",
+            "severity": "medium",
+            "category": "CWE-639",
+            "description": "The Redis key only contains the client-supplied idempotency key. If two merchants send the same key, the second gets the first merchant's refund back, including its order id and amount.",
+            "file": "src/payments/refunds.ts",
+            "lines": [
+              25,
+              25
+            ],
+            "confidence": "medium",
+            "suggestion": {
+              "explanation": "Prefix the key with the merchant id (once it's passed in, see the ownership finding).",
+              "diff": "--- a/src/payments/refunds.ts\n+++ b/src/payments/refunds.ts\n@@ -25,1 +25,1 @@\n-  const cached = await redis.get(`refund:idem:${req.idempotencyKey}`);\n+  const cached = await redis.get(`refund:idem:${req.merchantId}:${req.idempotencyKey}`);"
+            }
+          },
+          {
+            "id": "flag-404",
+            "title": "Flag-off responses reveal the endpoint exists",
+            "severity": "info",
+            "category": "CWE-200",
+            "description": "The 404 is returned after `requireMerchant`, so unauthenticated callers get 401 and can tell the route exists. Low impact while the flag is temporary.",
+            "file": "src/api/routes/refunds.ts",
+            "lines": [
+              14,
+              15
+            ],
+            "confidence": "low",
+            "suggestion": {
+              "explanation": "Check the flag when mounting the router instead of inside the handler."
+            }
+          }
+        ]
+      }
+    },
+    "metrics": {
+      "source": {
+        "type": "fixture"
+      },
+      "data": {
+        "version": "1",
+        "coverage": {
+          "tool": "vitest (v8)",
+          "lines": 84.2,
+          "baseLines": 85,
+          "files": [
+            {
+              "path": "src/payments/refunds.ts",
+              "lines": 88.6,
+              "uncoveredLines": [
+                26,
+                33
+              ]
+            },
+            {
+              "path": "src/lib/money.ts",
+              "lines": 93.1,
+              "uncoveredLines": [
+                30
+              ]
+            },
+            {
+              "path": "src/payments/webhooks.ts",
+              "lines": 100,
+              "uncoveredLines": []
+            },
+            {
+              "path": "src/config/featureFlags.ts",
+              "lines": 100,
+              "uncoveredLines": []
+            }
+          ]
+        },
+        "quality": {
+          "tool": "eslint complexity",
+          "files": [
+            {
+              "path": "src/payments/refunds.ts",
+              "complexity": 9,
+              "complexityDelta": 9
+            },
+            {
+              "path": "src/api/routes/refunds.ts",
+              "complexity": 7,
+              "complexityDelta": 7
+            },
+            {
+              "path": "src/lib/money.ts",
+              "complexity": 14,
+              "complexityDelta": 6
+            }
+          ]
+        }
+      }
+    }
+  }
+}

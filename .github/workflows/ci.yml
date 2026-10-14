@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,18 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - name: JSON schemas are up to date
-        run: npm run schema && git diff --exit-code schemas/
+      - name: Generated schemas and fixtures are up to date
+        run: npm run generate && git diff --exit-code schemas/ fixtures/
       - run: npm run build
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked

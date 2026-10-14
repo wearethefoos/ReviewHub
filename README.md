@@ -44,12 +44,33 @@ To set up a repository:
 
 ### CLI
 
+`reviewhub` is a single Rust binary for reviewing from the terminal and for the agents and CI jobs that publish reports.
+
 ```sh
-npm run reviewhub -- validate manifest manifest.json
-npm run reviewhub -- metrics --lcov coverage/lcov.info > metrics.json
-npm run reviewhub -- publish security security.json --repo owner/repo --pr 123   # needs GITHUB_TOKEN
-npm run reviewhub -- schema manifest
+cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub
 ```
+
+Review a pull request in the terminal. It uses `GITHUB_TOKEN`, or your `gh auth login` if that's not set:
+
+```sh
+reviewhub review owner/repo#123            # the briefing: ask, focus files, security, deviations, decisions, gaps
+reviewhub review owner/repo#123 --diff     # plus the Focus files' diffs, annotated inline
+reviewhub review owner/repo#123 --all      # plus skipped files, passed checks, prompts, every rollout step
+reviewhub review owner/repo#123 --json     # bundle + focus analysis as JSON, for scripts and agents
+reviewhub review --bundle fixtures/demo/bundle.json   # the demo, offline
+```
+
+Produce and publish reports:
+
+```sh
+reviewhub schema manifest                                   # JSON Schema to give an agent
+reviewhub validate manifest manifest.json                   # exit code 1 with readable errors if invalid
+reviewhub metrics --lcov coverage/lcov.info > metrics.json  # coverage report from lcov
+reviewhub publish security security.json --repo owner/repo --pr 123   # create or update the PR comment
+reviewhub comment manifest manifest.json                    # just print the comment body
+```
+
+The CLI reads reports with the same trust rules as the web app, validates them against the same `schemas/`, and ranks files with the same scoring (its tests check it against the web app's results for the demo pull request).
 
 ## Development
 
@@ -59,10 +80,11 @@ npm run reviewhub -- schema manifest
 | `npm test`          | Unit tests (Vitest)                              |
 | `npm run typecheck` | TypeScript                                       |
 | `npm run lint`      | ESLint                                           |
-| `npm run schema`    | Regenerate `schemas/*.schema.json` from the Zod schemas |
+| `npm run generate`  | Regenerate `schemas/` and `fixtures/demo/` from the Zod schemas and the demo |
+| `cargo test`        | CLI tests, including scoring parity with the web app |
 | `npm run build`     | Production build                                 |
 
-Stack: Next.js (App Router, server components), React, Tailwind CSS with GitHub's Primer colours, Zod, Octokit.
+Stack: Next.js (App Router, server components), React, Tailwind CSS with GitHub's Primer colours, Zod, Octokit. The CLI is Rust (clap, serde, jsonschema, ureq).
 
 ```
 src/app/                 routes: home, /[owner]/[repo]/pull/[number], /open
@@ -71,7 +93,9 @@ src/lib/schema/          report schemas (source of truth for schemas/*.json)
 src/lib/focus/           file classification and focus scoring
 src/lib/sources/         GitHub loader, comment parsing, demo fixture
 src/lib/diff/            unified diff parsing
-cli/                     reviewhub CLI
+cli/                     reviewhub CLI (Rust)
+schemas/                 JSON Schemas generated from src/lib/schema
+fixtures/demo/           demo pull request + the web app's focus analysis of it (CLI parity tests)
 agents/                  instructions for the authoring and security agents
 ```
 
@@ -81,3 +105,4 @@ agents/                  instructions for the authoring and security agents
 - Posting review comments and approvals back to GitHub from ReviewHub.
 - Sending a decision alternative or security fix straight to an agent, instead of copying the prompt.
 - Caching GitHub responses; every page view fetches the pull request again.
+- Prebuilt CLI binaries; for now install with `cargo install`.

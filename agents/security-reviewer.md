@@ -30,9 +30,9 @@ For each finding provide:
 
 Set `commit` to `{{head_sha}}` and write a two or three sentence `summary` that tells the reviewer what to fix before merging.
 
-Write the report to `$TMPDIR/security.json`, then validate and publish it:
+Write the report to `$TMPDIR/security.json`, then validate and publish it with the `reviewhub` CLI (install it with `cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub`):
 
 ```sh
-npx tsx <reviewhub>/cli/reviewhub.ts validate security "$TMPDIR/security.json"
-npx tsx <reviewhub>/cli/reviewhub.ts publish security "$TMPDIR/security.json" --repo {{owner}}/{{repo}} --pr {{number}}
+reviewhub validate security "$TMPDIR/security.json"
+reviewhub publish security "$TMPDIR/security.json" --repo {{owner}}/{{repo}} --pr {{number}}
 ```

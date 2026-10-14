@@ -1,6 +1,7 @@
 # Example workflow for a repository reviewed with ReviewHub: publishes test
 # coverage for every pull request as a ReviewHub metrics report.
 # Adjust the test command to produce coverage/lcov.info for your stack.
+# `reviewhub publish` reads the repository from GITHUB_REPOSITORY.
 name: ReviewHub metrics
 
 on:
@@ -20,17 +21,11 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npx vitest run --coverage --coverage.reporter=lcov
-      - name: Check out ReviewHub
-        uses: actions/checkout@v4
-        with:
-          repository: wearethefoos/ReviewHub
-          path: .reviewhub-cli
-      - run: npm ci --prefix .reviewhub-cli
+      - name: Install the ReviewHub CLI
+        run: cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub
       - name: Publish metrics
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx --prefix .reviewhub-cli tsx .reviewhub-cli/cli/reviewhub.ts metrics \
-            --lcov coverage/lcov.info --root "$PWD" --commit "${{ github.event.pull_request.head.sha }}" > "$RUNNER_TEMP/metrics.json"
-          npx --prefix .reviewhub-cli tsx .reviewhub-cli/cli/reviewhub.ts publish metrics "$RUNNER_TEMP/metrics.json" \
-            --repo "${{ github.repository }}" --pr "${{ github.event.pull_request.number }}"
+          reviewhub metrics --lcov coverage/lcov.info --commit "${{ github.event.pull_request.head.sha }}" > "$RUNNER_TEMP/metrics.json"
+          reviewhub publish metrics "$RUNNER_TEMP/metrics.json" --pr "${{ github.event.pull_request.number }}"

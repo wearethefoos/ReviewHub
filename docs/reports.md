@@ -10,7 +10,7 @@ ReviewHub builds its view of a pull request from the GitHub diff plus three JSON
 
 All reports are optional. Without them ReviewHub still ranks files using path heuristics, but the briefing is mostly empty.
 
-JSON Schemas live in [`schemas/`](../schemas). The TypeScript source of truth is [`src/lib/schema`](../src/lib/schema). Regenerate the JSON files with `npm run schema`.
+JSON Schemas live in [`schemas/`](../schemas). The TypeScript source of truth is [`src/lib/schema`](../src/lib/schema). Regenerate the JSON files with `npm run generate`. The `reviewhub` CLI validates reports against these files, so the web app and the CLI accept exactly the same reports.
 
 ## Publishing a report
 
@@ -31,13 +31,13 @@ The comment must contain a marker followed by a fenced JSON block:
 </details>
 ````
 
-The CLI does this for you and updates its own earlier comment rather than adding a new one:
+The [`reviewhub` CLI](../README.md#cli) does this for you and updates its own earlier comment rather than adding a new one:
 
 ```sh
-GITHUB_TOKEN=... npm run reviewhub -- publish manifest manifest.json --repo owner/repo --pr 123
+reviewhub publish manifest manifest.json --repo owner/repo --pr 123   # GITHUB_TOKEN or `gh auth login`
 ```
 
-Or print the body and post it with any tool: `npm run reviewhub -- comment manifest manifest.json`.
+Or print the body and post it with any tool: `reviewhub comment manifest manifest.json`.
 
 If several comments of the same kind exist, the most recently updated one wins.
 
@@ -103,7 +103,7 @@ Deviations, decisions, validations and gaps take `files: [{ "path": "...", "line
 Build it from an lcov report in CI:
 
 ```sh
-npm run reviewhub -- metrics --lcov coverage/lcov.info --commit "$GITHUB_SHA" > metrics.json
+reviewhub metrics --lcov coverage/lcov.info --commit "$GITHUB_SHA" > metrics.json
 ```
 
 `uncoveredLines` per file is what lets ReviewHub mark changed lines no test runs. `quality.files[].complexityDelta` and `lintIssues` are optional and raise a file's focus score.
@@ -131,3 +131,5 @@ Every changed file gets a score from 0 to 100, and a tier:
 | Role                                         | core 10, test 10, supporting/config 6, …     |
 
 Generated files are capped at 5 unless the security report has a finding in them. An agent's `reviewHint: "must-review"` raises a file to Focus. `reviewHint: "skip"` is only honoured when no independent signal (security, coverage, complexity, sensitive path, failed validation) contradicts it; otherwise ReviewHub shows that the hint was overridden.
+
+The scoring is implemented twice: in TypeScript for the web app (`src/lib/focus/score.ts`) and in Rust for the CLI (`cli/src/focus.rs`). `npm run generate` writes the web app's analysis of the demo pull request to `fixtures/demo/focus.json`, and the CLI's tests fail if its analysis differs in any score, signal or annotation.

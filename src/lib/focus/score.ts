@@ -258,7 +258,13 @@ export function analyzeFocus(input: FocusInput): FocusAnalysis {
   const notes = new Map((input.manifest?.files ?? []).map((n) => [n.path, n]));
   const files = input.files
     .map((f) => analyzeFile(f, input, notes))
-    .sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier] || b.score - a.score || a.file.path.localeCompare(b.file.path));
+    .sort(
+      (a, b) =>
+        TIER_ORDER[a.tier] - TIER_ORDER[b.tier] ||
+        b.score - a.score ||
+        // Plain code-unit order, so the Rust CLI sorts identically.
+        (a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0),
+    );
 
   const totals: FocusAnalysis["totals"] = {
     all: { files: 0, lines: 0 },

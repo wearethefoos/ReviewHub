@@ -11,8 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "schema": "tsx scripts/export-schemas.ts",
-    "reviewhub": "tsx cli/reviewhub.ts"
+    "generate": "tsx scripts/generate.ts"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",

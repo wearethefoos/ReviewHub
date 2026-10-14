@@ -8,14 +8,14 @@ Copy this section into the `CLAUDE.md` (or equivalent agent instructions) of any
 
 Every pull request you open must come with a ReviewHub review manifest. Reviewers read it before the diff, so it decides where they spend their attention. Write it for a reviewer who has not seen the conversation.
 
-Write the manifest to a file outside the repository (for example `$TMPDIR/manifest.json`), validate it, then publish it as a comment on the pull request:
+Write the manifest to a file outside the repository (for example `$TMPDIR/manifest.json`), validate it, then publish it as a comment on the pull request with the `reviewhub` CLI (install it with `cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub`; it uses `GITHUB_TOKEN` or your `gh` login):
 
 ```sh
-npx tsx <reviewhub>/cli/reviewhub.ts validate manifest "$TMPDIR/manifest.json"
-npx tsx <reviewhub>/cli/reviewhub.ts publish manifest "$TMPDIR/manifest.json" --repo <owner/repo> --pr <number>
+reviewhub validate manifest "$TMPDIR/manifest.json"
+reviewhub publish manifest "$TMPDIR/manifest.json" --repo <owner/repo> --pr <number>
 ```
 
-Update and republish it whenever you push changes that affect it. The schema is `schemas/manifest.schema.json` in the ReviewHub repository; field-by-field documentation is in `docs/reports.md`.
+Update and republish it whenever you push changes that affect it. Print the schema with `reviewhub schema manifest`; field-by-field documentation is in `docs/reports.md`.
 
 Rules:
 
