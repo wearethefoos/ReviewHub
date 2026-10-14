@@ -1,15 +1,45 @@
 {
   "manifest_version": 3,
   "name": "ReviewHub",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Review agent-authored GitHub pull requests by what matters: the ask, deviations, decisions, validation gaps and security findings.",
   "homepage_url": "https://github.com/wearethefoos/ReviewHub",
-  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
-  "action": { "default_title": "Open this pull request in ReviewHub", "default_icon": { "16": "icons/16.png", "32": "icons/32.png" } },
-  "background": { "service_worker": "background.js" },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "action": {
+    "default_title": "Open this pull request in ReviewHub",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "options_page": "options.html",
-  "permissions": ["storage", "activeTab"],
-  "host_permissions": ["https://api.github.com/*"],
-  "content_scripts": [{ "matches": ["https://github.com/*"], "js": ["content.js"], "run_at": "document_idle" }],
-  "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" }
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
 }
