@@ -1114,7 +1114,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reviewhub"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1131,7 +1131,7 @@ dependencies = [
 
 [[package]]
 name = "reviewhub-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "jsonschema",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "reviewhub-wasm"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "reviewhub-core",
  "serde",
