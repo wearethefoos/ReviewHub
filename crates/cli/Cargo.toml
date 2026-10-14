@@ -4,6 +4,7 @@ description = "Review agent-authored pull requests from the terminal, and publis
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
 publish = false
 
 [[bin]]

@@ -6,6 +6,7 @@ resolver = "3"
 version = "0.3.0"
 edition = "2024"
 repository = "https://github.com/wearethefoos/ReviewHub"
+license = "Apache-2.0"
 
 [workspace.dependencies]
 reviewhub-core = { path = "crates/core" }

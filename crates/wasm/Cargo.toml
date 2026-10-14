@@ -4,6 +4,7 @@ description = "WebAssembly bindings of reviewhub-core for the ReviewHub browser 
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
 publish = false
 
 [lib]

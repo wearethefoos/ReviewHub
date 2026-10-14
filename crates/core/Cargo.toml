@@ -4,6 +4,7 @@ description = "ReviewHub report schemas, validation and focus scoring, shared by
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
 publish = false
 
 [features]

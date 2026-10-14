@@ -15,6 +15,23 @@ Agents produce more code than people can read line by line, and much of it doesn
 
 Nothing runs on a server. ReviewHub is a Chrome extension, a static web app on GitHub Pages, a briefing comment on each pull request, and a Claude Code plugin; they all talk to GitHub directly.
 
+## TL;DR
+
+Set up a repository: run this in its root, then commit the files it lists. Claude Code then publishes a review manifest with every pull request it opens, and each pull request gets a briefing comment.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh -s -- init
+```
+
+Then review pull requests wherever you are:
+
+| Where | How |
+| --- | --- |
+| Claude Code | `/plugin marketplace add wearethefoos/ReviewHub`, then `/plugin install reviewhub@reviewhub`, then `/reviewhub:review owner/repo#123` |
+| Chrome | Unzip `reviewhub-extension-*.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest) and load it in `chrome://extensions` (Developer mode → Load unpacked) |
+| Phone or any browser | <https://wearethefoos.github.io/ReviewHub/>, or the briefing comment on the pull request |
+| Terminal | `reviewhub review owner/repo#123` (installed by the command above) |
+
 ![The briefing for the demo pull request](docs/screenshot-briefing.png)
 
 ## Install
@@ -143,3 +160,7 @@ scripts/test-plugin-hook.sh && scripts/test-plugin-shim.sh target/debug/reviewhu
 ```
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/); releases are automated with release-please. See [`RELEASING.md`](RELEASING.md).
+
+## License
+
+ReviewHub is open source under the [Apache License 2.0](LICENSE): use it, change it and build on it, including commercially. Everything in this repository stays under that license. A hosted service with more advanced review tooling may be offered separately in the future; it would live outside this repository and not change the terms of anything here.

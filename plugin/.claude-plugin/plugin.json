@@ -9,6 +9,7 @@
   },
   "homepage": "https://github.com/wearethefoos/ReviewHub",
   "repository": "https://github.com/wearethefoos/ReviewHub",
+  "license": "Apache-2.0",
   "keywords": [
     "code-review",
     "pull-requests",
