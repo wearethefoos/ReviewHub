@@ -12,6 +12,15 @@ runs:
       with:
         path: ~/.cargo/bin/wasm-bindgen
         key: wasm-bindgen-${{ runner.os }}-${{ steps.version.outputs.wasm-bindgen }}
-    - if: steps.cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: cargo install wasm-bindgen-cli --locked --version "${{ steps.version.outputs.wasm-bindgen }}"
+    # Other caches (rust-cache restores ~/.cargo/bin) may already have put a
+    # wasm-bindgen there, possibly of another version: only install on a mismatch.
+    - shell: bash
+      env:
+        WANT: ${{ steps.version.outputs.wasm-bindgen }}
+      run: |
+        have=$(wasm-bindgen --version 2>/dev/null | cut -d ' ' -f 2 || true)
+        if [ "$have" = "$WANT" ]; then
+          echo "wasm-bindgen $WANT already installed"
+        else
+          cargo install wasm-bindgen-cli --locked --force --version "$WANT"
+        fi
