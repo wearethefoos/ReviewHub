@@ -50,11 +50,13 @@ The plugin brings the `reviewhub` CLI with it: on first use it downloads the rel
 
 ### Repository setup: `reviewhub init`
 
-In a repository you want reviewed with ReviewHub:
+In a repository you want reviewed with ReviewHub, run this from its root. It installs the `reviewhub` CLI (see [CLI on its own](#cli-on-its-own)) and sets up the repository:
 
 ```sh
-reviewhub init        # then commit the files it lists
+curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh -s -- init
 ```
+
+Then commit the files it lists. With the CLI already installed, `reviewhub init` does the same.
 
 It writes:
 
@@ -74,7 +76,7 @@ For CI, or terminals without Claude Code:
 curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh
 ```
 
-This installs the latest release to `~/.local/bin` after verifying its checksum. Binaries are built for Linux (x86-64, ARM64), macOS (Intel, Apple Silicon) and Windows (x86-64).
+This installs the latest release to `~/.local/bin` (or `$REVIEWHUB_INSTALL_DIR`) after verifying its checksum; set `REVIEWHUB_VERSION=X.Y.Z` for a specific version. Anything after `sh -s --` runs with the installed CLI, as in the `init` one-liner above. Binaries are built for Linux (x86-64, ARM64), macOS (Intel, Apple Silicon) and Windows (x86-64, from Git Bash).
 
 ```sh
 reviewhub review owner/repo#123            # the briefing: ask, focus files, security, deviations, decisions, gaps
