@@ -22,3 +22,9 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 - The briefing comment (`crates/cli/src/briefing.rs`) is posted by a trusted account, so every piece of report text goes through `esc` (no HTML, no fake report markers, no @mentions).
 - The web app is the extension's review page built with `npm run build:web`; code that touches `chrome.*` must check `isExtension()` from `src/lib/settings.ts`.
 - The demo pull request (`fixtures/demo/bundle.json`) is used by the extension, the CLI tests and the docs. Keep it realistic.
+
+<!-- reviewhub:start -->
+## ReviewHub
+
+Pull requests in this repository are reviewed with ReviewHub. Publish a review manifest with every pull request you open or update (reviewhub-manifest skill). The `reviewhub` CLI (v0.2.1) is on PATH in Claude Code sessions; elsewhere run `.claude/reviewhub/bin/reviewhub`. To update these files, run `reviewhub init` with a newer CLI.
+<!-- reviewhub:end -->

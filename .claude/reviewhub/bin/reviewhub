@@ -1,0 +1,159 @@
+#!/bin/sh
+# ReviewHub CLI launcher.
+#
+# Runs the ReviewHub CLI release of a pinned version, downloading it from
+# GitHub releases on first use and verifying it against the release's
+# SHA256SUMS. Used in two places:
+# - the Claude Code plugin (plugin/bin/reviewhub, on PATH in plugin sessions):
+#   pinned to the plugin's version, so updating the plugin updates the CLI;
+# - repositories set up with `reviewhub init` (.claude/reviewhub/bin/reviewhub):
+#   pinned by the VERSION file next to it, so cloud sessions get the same CLI.
+#
+# Environment:
+#   REVIEWHUB_BIN               run this binary instead (e.g. a local build)
+#   REVIEWHUB_CACHE_DIR         where binaries are kept
+#                               (default: $CLAUDE_PLUGIN_DATA, else ~/.cache/reviewhub)
+#   REVIEWHUB_RELEASE_BASE_URL  base URL of the release downloads (mirrors, testing)
+#   GITHUB_TOKEN / GH_TOKEN     used when the release can't be downloaded anonymously
+#                               (private repository); `gh auth token` is tried too
+set -eu
+
+if [ -n "${REVIEWHUB_BIN:-}" ]; then
+  exec "$REVIEWHUB_BIN" "$@"
+fi
+
+repo=wearethefoos/ReviewHub
+
+fail() {
+  echo "reviewhub: $*" >&2
+  exit 1
+}
+
+here=$(cd "$(dirname "$0")" && pwd)
+if [ -f "$here/VERSION" ]; then
+  version=$(tr -d ' \r\n' <"$here/VERSION")
+else
+  version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../.claude-plugin/plugin.json" 2>/dev/null | head -n 1)
+fi
+[ -n "$version" ] || fail "can't tell which version to run: no $here/VERSION or plugin manifest"
+
+exe=""
+case "$(uname -s)" in
+  Linux) os=unknown-linux-musl ;;
+  Darwin) os=apple-darwin ;;
+  MINGW* | MSYS* | CYGWIN*) os=pc-windows-msvc exe=.exe ;;
+  *) fail "unsupported operating system: $(uname -s)" ;;
+esac
+case "$(uname -m)" in
+  x86_64 | amd64) arch=x86_64 ;;
+  aarch64 | arm64) arch=aarch64 ;;
+  *) fail "unsupported CPU architecture: $(uname -m)" ;;
+esac
+# Apple Silicon reports x86_64 under Rosetta; prefer the native binary.
+if [ "$os" = apple-darwin ] && [ "$arch" = x86_64 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then
+  arch=aarch64
+fi
+[ "$os" = pc-windows-msvc ] && arch=x86_64 # windows arm64 runs the x64 build
+asset="reviewhub-$arch-$os$exe"
+
+cache="${REVIEWHUB_CACHE_DIR:-${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/reviewhub}}"
+bin="$cache/v$version/reviewhub$exe"
+
+download() { # url file
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 3 --connect-timeout 15 -o "$2" "$1" 2>/dev/null
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -T 15 -t 3 -O "$2" "$1"
+  else
+    fail "curl or wget is needed to download the ReviewHub CLI"
+  fi
+}
+
+token() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    echo "$GITHUB_TOKEN"
+  elif [ -n "${GH_TOKEN:-}" ]; then
+    echo "$GH_TOKEN"
+  elif command -v gh >/dev/null 2>&1; then
+    gh auth token 2>/dev/null || true
+  fi
+}
+
+# Downloads release assets through the GitHub API, which works for private
+# repositories with a token (and in cloud sessions, whose GitHub proxy adds one).
+api_curl() {
+  if [ -n "$auth" ]; then
+    curl -fsSL --retry 3 --connect-timeout 15 -H "Authorization: Bearer $auth" "$@" 2>/dev/null
+  else
+    curl -fsSL --retry 3 --connect-timeout 15 "$@" 2>/dev/null
+  fi
+}
+
+api_download() { # name file
+  command -v curl >/dev/null 2>&1 || return 1
+  api="${GITHUB_API_URL:-https://api.github.com}"
+  auth=$(token)
+  if [ ! -f "$tmp/release.json" ]; then
+    api_curl -o "$tmp/release.json" "$api/repos/$repo/releases/tags/v$version" || return 1
+  fi
+  # One JSON value per line, without whitespace. Each asset lists its API url
+  # before its name, so remember the last asset url and print it at the name.
+  id=$(tr -d ' \t\r\n' <"$tmp/release.json" | tr ',{}[]' '\n\n\n\n\n' | awk -v name="\"name\":\"$1\"" '
+    /^"url":".*\/releases\/assets\/[0-9]+"$/ { n = $0; sub(/"$/, "", n); sub(/.*\//, "", n); last = n }
+    $0 == name && last != "" { print last; exit }')
+  [ -n "$id" ] || return 1
+  api_curl -H "Accept: application/octet-stream" -o "$2" "$api/repos/$repo/releases/assets/$id"
+}
+
+fetch() { # name file
+  if [ -n "${REVIEWHUB_RELEASE_BASE_URL:-}" ]; then
+    download "$REVIEWHUB_RELEASE_BASE_URL/v$version/$1" "$2"
+  else
+    download "https://github.com/$repo/releases/download/v$version/$1" "$2" || api_download "$1" "$2"
+  fi
+}
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d ' ' -f 1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d ' ' -f 1
+  else
+    fail "sha256sum or shasum is needed to verify the ReviewHub CLI"
+  fi
+}
+
+if [ ! -x "$bin" ]; then
+  mkdir -p "$cache"
+  tmp=$(mktemp -d "$cache/.download.XXXXXX")
+  trap 'rm -rf "$tmp"' EXIT INT TERM
+
+  echo "reviewhub: installing the ReviewHub CLI v$version ($arch-$os)…" >&2
+  if ! fetch SHA256SUMS "$tmp/SHA256SUMS"; then
+    # Right after a release, its binaries take a few minutes to build. Until
+    # then, run the newest CLI already installed instead of failing.
+    previous=$(ls -d "$cache"/v*/ 2>/dev/null | sed 's|/$||; s|.*/v||' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+    if [ -n "$previous" ] && [ -x "$cache/v$previous/reviewhub$exe" ]; then
+      echo "reviewhub: v$version isn't downloadable yet (a new release takes a few minutes to build); using v$previous for now." >&2
+      exec "$cache/v$previous/reviewhub$exe" "$@"
+    fi
+    fail "couldn't download SHA256SUMS of v$version. A new release takes a few minutes to build; if this persists, check that v$version is released. For a local build, set REVIEWHUB_BIN."
+  fi
+  fetch "$asset" "$tmp/$asset" || fail "couldn't download $asset of v$version"
+
+  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")
+  [ -n "$expected" ] || fail "SHA256SUMS of v$version has no entry for $asset"
+  actual=$(sha256 "$tmp/$asset")
+  [ "$expected" = "$actual" ] || fail "checksum mismatch for $asset (expected $expected, got $actual); not installing it"
+
+  chmod +x "$tmp/$asset"
+  mkdir -p "$cache/v$version"
+  mv -f "$tmp/$asset" "$bin"
+
+  # Several launchers (the plugin, repositories pinned to other versions) can
+  # share this cache, so only remove versions nobody has used for 30 days.
+  find "$cache" -mindepth 1 -maxdepth 1 -name 'v*' -type d -mtime +30 -exec rm -rf {} + 2>/dev/null || true
+fi
+
+touch "$cache/v$version" 2>/dev/null || true
+exec "$bin" "$@"
