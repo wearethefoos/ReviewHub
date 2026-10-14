@@ -2,6 +2,7 @@
   "name": "reviewhub-extension",
   "version": "0.3.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "ReviewHub browser extension: review agent-authored GitHub pull requests by what matters.",
   "type": "module",
   "scripts": {
