@@ -9,14 +9,16 @@ cargo=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([^"]*\)"/\1/p' Car
 plugin=$(json_version plugin/.claude-plugin/plugin.json)
 extension=$(json_version extension/package.json)
 manifest=$(json_version extension/public/manifest.json)
+release=$(tr -d ' \n' <version.txt)
 
 echo "Cargo workspace:      $cargo"
 echo "Claude plugin:        $plugin"
 echo "extension package:    $extension"
 echo "extension manifest:   $manifest"
+echo "release (version.txt): $release"
 
-if [ "$cargo" != "$plugin" ] || [ "$cargo" != "$extension" ] || [ "$cargo" != "$manifest" ]; then
-  echo "Versions differ. Use scripts/bump-version.sh to change them together." >&2
+if [ "$cargo" != "$plugin" ] || [ "$cargo" != "$extension" ] || [ "$cargo" != "$manifest" ] || [ "$cargo" != "$release" ]; then
+  echo "Versions differ. Releases set them together (release-please, or scripts/bump-version.sh)." >&2
   exit 1
 fi
 if [ -n "${1:-}" ] && [ "$1" != "$cargo" ]; then

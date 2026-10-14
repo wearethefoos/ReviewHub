@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Sets the version of the CLI, the Claude plugin and the extension. They are
-# released together: the plugin downloads the CLI binary of its own version.
+# Sets the version of the CLI, the Claude plugin and the extension, and updates
+# the lockfiles. They are released together: the plugin downloads the CLI binary
+# of its own version. Releases normally come from release-please (RELEASING.md),
+# whose workflow runs this on the release PR to update the lockfiles.
 #   scripts/bump-version.sh 0.2.0
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -12,6 +14,7 @@ sed -i.bak "/^\[workspace.package\]/,/^\[/s/^version = \"[^\"]*\"/version = \"$v
 for file in plugin/.claude-plugin/plugin.json extension/package.json extension/public/manifest.json; do
   sed -i.bak "s/^  \"version\": \"[^\"]*\"/  \"version\": \"$version\"/" "$file"
 done
+echo "$version" > version.txt
 find . -name '*.bak' -not -path './node_modules/*' -not -path './extension/node_modules/*' -delete
 
 cargo update --workspace --quiet

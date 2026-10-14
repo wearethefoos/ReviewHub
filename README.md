@@ -140,4 +140,4 @@ claude --plugin-dir ./plugin      # try local changes; set REVIEWHUB_BIN=target/
 scripts/test-plugin-hook.sh && scripts/test-plugin-shim.sh target/debug/reviewhub
 ```
 
-Releases are cut from a tag; see [`RELEASING.md`](RELEASING.md).
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/); releases are automated with release-please. See [`RELEASING.md`](RELEASING.md).

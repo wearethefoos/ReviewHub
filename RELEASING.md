@@ -1,34 +1,41 @@
 # Releasing
 
-The CLI, the Claude plugin and the extension share one version. The plugin downloads the CLI binary of its own version from the GitHub release, so **a plugin version must never reach `main` before its release exists**: plugin users install from `main`, and would get a launcher pointing at binaries that aren't there yet.
+Releases are automated with [release-please](https://github.com/googleapis/release-please-action) from [Conventional Commits](https://www.conventionalcommits.org/). The CLI, the Claude plugin and the extension share one version; the plugin (and every repository set up with `reviewhub init`) downloads the CLI binary of exactly that version.
 
-So release from a branch, and merge after the release is published:
+## Commit messages
 
-1. On a branch from `main`, set the version everywhere:
+Pull requests are squash-merged, and their titles become the commits release-please reads, so PR titles must follow Conventional Commits (a check enforces it):
 
-   ```sh
-   scripts/bump-version.sh 0.2.0
-   ```
+| Prefix | Example | Effect |
+| --- | --- | --- |
+| `feat:` | `feat: briefing comment links to the web app` | minor bump, listed under Features |
+| `fix:` | `fix(cli): handle PRs without a head repository` | patch bump, listed under Bug fixes |
+| `perf:`, `revert:`, `docs:` | | patch bump, listed in the changelog |
+| `refactor:`, `test:`, `build:`, `ci:`, `chore:` | | no release on their own, not listed |
+| `feat!:` or a `BREAKING CHANGE:` footer | `feat!: rename the manifest's files field` | minor bump before 1.0, major after |
 
-   This updates `Cargo.toml`, `plugin/.claude-plugin/plugin.json`, `extension/package.json` and `extension/public/manifest.json`, and the lockfiles. Chrome requires plain `X.Y.Z` versions.
+Scopes are optional; useful ones are `core`, `cli`, `extension`, `plugin`, `web`.
 
-2. Commit, push the branch and open a pull request. Wait for CI to pass.
+## How a release happens
 
-3. Tag the branch's head and push the tag:
+1. **Merge pull requests to `main`.** On every push, the [Release Please workflow](.github/workflows/release-please.yml) opens or updates a release pull request ("chore(main): release X.Y.Z") with:
+   - the new version in `version.txt`, `Cargo.toml`, `plugin/.claude-plugin/plugin.json`, `extension/package.json` and `extension/public/manifest.json`;
+   - the updated `Cargo.lock` and `extension/package-lock.json` (a follow-up job commits these with `scripts/bump-version.sh`);
+   - the new `CHANGELOG.md` section.
+2. **Merge the release pull request when you want to ship.** release-please tags `vX.Y.Z` and creates the GitHub release with the changelog.
+3. **The builds are attached.** The same workflow calls the [release workflow](.github/workflows/release.yml), which builds the CLI for Linux (x86-64, ARM64, static musl), macOS (Intel, Apple Silicon) and Windows, and the extension, and uploads them with `SHA256SUMS` to the release. This takes about 10 minutes.
+4. **Users update.** Plugin users get the new version on their next marketplace update; repositories pick it up when someone runs `reviewhub init` with the new CLI. Merging to `main` also redeploys the web app to GitHub Pages ([pages workflow](.github/workflows/pages.yml)).
 
-   ```sh
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
+While the builds in step 3 are running, the plugin on `main` already has the new version but its binaries aren't downloadable yet. The launcher (`plugin/bin/reviewhub`) handles that: it keeps using the newest CLI it already has and tells the user, and fetches the new one once it's there.
 
-   Or, instead of pushing a tag, run the **Release** workflow from the Actions tab on the branch with the version as input; it creates the tag on that commit when it publishes.
+If you publish the extension on the Chrome Web Store, upload `reviewhub-extension-vX.Y.Z.zip` from the release.
 
-   The [release workflow](.github/workflows/release.yml) checks the tag matches the versions, builds the CLI for Linux (x86-64, ARM64, static musl), macOS (Intel, Apple Silicon) and Windows, builds the extension, and publishes them with `SHA256SUMS` as release `v0.2.0`.
+## Setup
 
-4. When the release is published, merge the pull request. Plugin users get the new version on their next marketplace update, and the CLI follows on first use.
+- **`RELEASE_PLEASE_TOKEN` secret (recommended).** Pull requests and commits made with the workflow's own `GITHUB_TOKEN` don't trigger other workflows, so without this secret CI won't run on the release pull request. Add a fine-grained personal access token (or a GitHub App token) with *Contents* and *Pull requests* read/write access to this repository.
+- **Settings → Actions → General → Workflow permissions:** allow GitHub Actions to create pull requests.
+- **Settings → Pages → Source: GitHub Actions**, for the web app.
 
-5. Merging to `main` also redeploys the web app to GitHub Pages ([pages workflow](.github/workflows/pages.yml); one-time setup: Settings → Pages → Source: GitHub Actions).
+## By hand
 
-6. If you publish the extension on the Chrome Web Store, upload `reviewhub-extension-v0.2.0.zip` from the release.
-
-If the release workflow fails, fix it on the branch, delete the tag (`git push --delete origin v0.2.0 && git tag -d v0.2.0`) and tag again. Nothing reaches users until the pull request is merged.
+If release-please can't be used (for example to rebuild a release's assets), run **Actions → Release → Run workflow** with a version that matches `version.txt`. For a new version it creates the tag and the release from the branch you run it on; to rebuild an existing release's assets, pick that release's tag under "Use workflow from" so the builds match the tagged code. To set versions by hand, use `scripts/bump-version.sh X.Y.Z`, never edit them individually; `scripts/check-version.sh` verifies they agree.

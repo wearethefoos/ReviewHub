@@ -1,11 +1,20 @@
 name: Release
 
-# Push a tag like v0.2.0, or run this workflow from the Actions tab on the
-# commit to release (it then creates the tag). See RELEASING.md. Builds the CLI
-# for every platform the Claude plugin supports and the browser extension, then
-# publishes them with SHA256SUMS as a GitHub release. The plugin downloads the
-# binary of its own version from that release and verifies it against SHA256SUMS.
+# Builds the CLI for every platform the Claude plugin supports and the browser
+# extension, and attaches them with SHA256SUMS to a GitHub release. The plugin
+# downloads the binary of its own version from that release and verifies it
+# against SHA256SUMS. See RELEASING.md.
+#
+# Normally called by the Release Please workflow for the release it just
+# created. Can also run by hand from the Actions tab (it then creates the tag
+# and the release), or on a pushed tag.
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag of the release to attach the builds to
+        required: true
+        type: string
   push:
     tags: ["v*.*.*"]
   workflow_dispatch:
@@ -18,7 +27,7 @@ permissions:
   contents: read
 
 env:
-  TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+  TAG: ${{ inputs.tag || (github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version)) || github.ref_name }}
 
 jobs:
   check:
@@ -27,13 +36,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Tag matches the versions in the repository
         run: scripts/check-version.sh "${TAG#v}"
-      - name: The release doesn't exist yet
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-            echo "$TAG already exists. Bump the version or delete the tag first." >&2
-            exit 1
-          fi
 
   cli:
     needs: check
@@ -108,8 +110,14 @@ jobs:
       - name: Checksums
         working-directory: out
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
-      - name: Create the release
+      - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        # For a tag push the tag exists and --target is ignored; for a manual run this creates the tag on the built commit.
-        run: gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --target "$GITHUB_SHA" --generate-notes
+        # release-please creates the release first; a manual run or a pushed tag creates it here
+        # (for a manual run, --target creates the tag on the built commit).
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --target "$GITHUB_SHA" --generate-notes
+          fi
