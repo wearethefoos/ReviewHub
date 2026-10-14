@@ -1,5 +1,5 @@
 name: wasm tools
-description: Installs wasm-bindgen-cli at the version in Cargo.lock, and wasm-opt.
+description: Installs wasm-bindgen-cli at the version in Cargo.lock.
 runs:
   using: composite
   steps:
@@ -15,5 +15,3 @@ runs:
     - if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: cargo install wasm-bindgen-cli --locked --version "${{ steps.version.outputs.wasm-bindgen }}"
-    - shell: bash
-      run: sudo apt-get update && sudo apt-get install -y binaryen
