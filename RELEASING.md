@@ -21,6 +21,8 @@ So release from a branch, and merge after the release is published:
    git push origin v0.2.0
    ```
 
+   Or, instead of pushing a tag, run the **Release** workflow from the Actions tab on the branch with the version as input; it creates the tag on that commit when it publishes.
+
    The [release workflow](.github/workflows/release.yml) checks the tag matches the versions, builds the CLI for Linux (x86-64, ARM64, static musl), macOS (Intel, Apple Silicon) and Windows, builds the extension, and publishes them with `SHA256SUMS` as release `v0.2.0`.
 
 4. When the release is published, merge the pull request. Plugin users get the new version on their next marketplace update, and the CLI follows on first use.

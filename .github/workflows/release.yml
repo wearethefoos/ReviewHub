@@ -1,15 +1,24 @@
 name: Release
 
-# Push a tag like v0.2.0 (see RELEASING.md). Builds the CLI for every platform
-# the Claude plugin supports and the browser extension, then publishes them
-# with SHA256SUMS as a GitHub release. The plugin downloads the binary of its
-# own version from that release and verifies it against SHA256SUMS.
+# Push a tag like v0.2.0, or run this workflow from the Actions tab on the
+# commit to release (it then creates the tag). See RELEASING.md. Builds the CLI
+# for every platform the Claude plugin supports and the browser extension, then
+# publishes them with SHA256SUMS as a GitHub release. The plugin downloads the
+# binary of its own version from that release and verifies it against SHA256SUMS.
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.2.0 (must match the versions in the repository)"
+        required: true
 
 permissions:
   contents: read
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
 
 jobs:
   check:
@@ -17,7 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Tag matches the versions in the repository
-        run: scripts/check-version.sh "${GITHUB_REF_NAME#v}"
+        run: scripts/check-version.sh "${TAG#v}"
+      - name: The release doesn't exist yet
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists. Bump the version or delete the tag first." >&2
+            exit 1
+          fi
 
   cli:
     needs: check
@@ -72,7 +88,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p out
-          (cd extension/dist && zip -qr "../../out/reviewhub-extension-${GITHUB_REF_NAME}.zip" .)
+          (cd extension/dist && zip -qr "../../out/reviewhub-extension-${TAG}.zip" .)
       - uses: actions/upload-artifact@v4
         with:
           name: extension
@@ -95,4 +111,5 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        # For a tag push the tag exists and --target is ignored; for a manual run this creates the tag on the built commit.
+        run: gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --target "$GITHUB_SHA" --generate-notes
