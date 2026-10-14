@@ -3,6 +3,11 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh
 #
+# Arguments after `sh -s --` are run with the installed CLI, e.g. to set up the
+# repository in the current directory:
+#
+#   curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh -s -- init
+#
 # Environment:
 #   REVIEWHUB_VERSION      version to install, e.g. 0.2.0 (default: the latest release)
 #   REVIEWHUB_INSTALL_DIR  where to put the binary (default: ~/.local/bin)
@@ -82,7 +87,10 @@ asset="reviewhub-$arch-$os$exe"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 echo "Installing the ReviewHub CLI v$version ($arch-$os) to $dir"
-fetch SHA256SUMS "$tmp/SHA256SUMS" || fail "can't download SHA256SUMS for v$version"
+if ! fetch SHA256SUMS "$tmp/SHA256SUMS"; then
+  [ -n "${REVIEWHUB_VERSION:-}" ] || fail "v$version has no binaries yet; a new release takes a few minutes to build. Try again shortly, or set REVIEWHUB_VERSION to an earlier version."
+  fail "can't download SHA256SUMS for v$version"
+fi
 fetch "$asset" "$tmp/$asset" || fail "can't download $asset"
 expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")
 [ -n "$expected" ] && [ "$expected" = "$(sha256 "$tmp/$asset")" ] || fail "checksum mismatch for $asset; not installing it"
@@ -92,3 +100,8 @@ chmod +x "$tmp/$asset"
 mv -f "$tmp/$asset" "$dir/reviewhub$exe"
 "$dir/reviewhub$exe" --version
 case ":$PATH:" in *":$dir:"*) ;; *) echo "Add $dir to your PATH to run reviewhub." ;; esac
+
+if [ $# -gt 0 ]; then
+  echo
+  "$dir/reviewhub$exe" "$@"
+fi
