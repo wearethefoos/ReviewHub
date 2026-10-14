@@ -10,7 +10,7 @@ ReviewHub builds its view of a pull request from the GitHub diff plus three JSON
 
 All reports are optional. Without them ReviewHub still ranks files using path heuristics, but the briefing is mostly empty.
 
-JSON Schemas live in [`schemas/`](../schemas). The TypeScript source of truth is [`src/lib/schema`](../src/lib/schema). Regenerate the JSON files with `npm run generate`. The `reviewhub` CLI validates reports against these files, so the web app and the CLI accept exactly the same reports.
+JSON Schemas live in [`schemas/`](../schemas), and `reviewhub schema <kind>` prints them. They are generated from the Rust types in [`crates/core/src/model.rs`](../crates/core/src/model.rs), which the CLI and the browser extension (through WebAssembly) both use, so both accept exactly the same reports.
 
 ## Publishing a report
 
@@ -41,12 +41,12 @@ Or print the body and post it with any tool: `reviewhub comment manifest manifes
 
 If several comments of the same kind exist, the most recently updated one wins.
 
-**Trust.** Anyone can comment on a public pull request, and a fake manifest could steer reviewers away from code. ReviewHub only reads report comments from:
+**Trust.** Anyone can comment on a public pull request, and a fake manifest could steer reviewers away from code. ReviewHub (the CLI and the extension alike) only reads report comments from:
 
 - repository owners, members and collaborators,
 - the pull request's author,
 - `github-actions[bot]`,
-- logins listed in the `REVIEWHUB_TRUSTED_AUTHORS` environment variable (comma separated).
+- logins you add: `REVIEWHUB_TRUSTED_AUTHORS` (comma separated) for the CLI, the extension's settings page for the browser.
 
 ### As a file on the branch
 
@@ -132,4 +132,4 @@ Every changed file gets a score from 0 to 100, and a tier:
 
 Generated files are capped at 5 unless the security report has a finding in them. An agent's `reviewHint: "must-review"` raises a file to Focus. `reviewHint: "skip"` is only honoured when no independent signal (security, coverage, complexity, sensitive path, failed validation) contradicts it; otherwise ReviewHub shows that the hint was overridden.
 
-The scoring is implemented twice: in TypeScript for the web app (`src/lib/focus/score.ts`) and in Rust for the CLI (`cli/src/focus.rs`). `npm run generate` writes the web app's analysis of the demo pull request to `fixtures/demo/focus.json`, and the CLI's tests fail if its analysis differs in any score, signal or annotation.
+The scoring lives in [`crates/core/src/focus.rs`](../crates/core/src/focus.rs). The CLI and the extension run the same code, so a pull request ranks the same in the terminal and in the browser.

@@ -1,7 +1,25 @@
 [workspace]
-members = ["cli"]
+members = ["crates/core", "crates/cli", "crates/wasm"]
 resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/wearethefoos/ReviewHub"
+
+[workspace.dependencies]
+reviewhub-core = { path = "crates/core" }
+jsonschema = { version = "0.58", default-features = false }
+regex = "1.13"
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 lto = true
 strip = true
+codegen-units = 1
+
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"

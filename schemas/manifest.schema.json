@@ -1,518 +1,547 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "version": {
-      "type": "string",
-      "const": "1"
-    },
-    "agent": {
-      "type": "object",
+  "$defs": {
+    "Agent": {
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
         "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "minLength": 1,
           "type": "string"
         },
         "sessionUrl": {
-          "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "name"
-      ]
+      ],
+      "type": "object"
     },
-    "prompt": {
-      "type": "object",
+    "Alternative": {
       "properties": {
-        "original": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The user's request, verbatim."
+        "description": {
+          "type": "string"
         },
+        "prompt": {
+          "description": "A ready-to-use prompt that asks an agent to switch to this alternative.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tradeoffs": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "description"
+      ],
+      "type": "object"
+    },
+    "Decision": {
+      "description": "A question the prompt left open, and how the agent answered it.",
+      "properties": {
+        "alternatives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Alternative"
+          },
+          "type": "array"
+        },
+        "chosen": {
+          "description": "What the agent decided.",
+          "type": "string"
+        },
+        "context": {
+          "description": "The question that needed answering and why the prompt did not settle it.",
+          "type": "string"
+        },
+        "files": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FileRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable identifier, unique within its list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "impact": {
+          "$ref": "#/$defs/Impact",
+          "default": "low"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "context",
+        "chosen",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "Deviation": {
+      "description": "A place where the delivery differs from what was asked.",
+      "properties": {
+        "delivered": {
+          "description": "What was delivered instead.",
+          "type": "string"
+        },
+        "files": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FileRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable identifier, unique within its list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the agent deviated.",
+          "type": "string"
+        },
+        "requested": {
+          "description": "What the prompt asked for.",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/DeviationSeverity",
+          "default": "minor"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "requested",
+        "delivered",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "DeviationSeverity": {
+      "enum": [
+        "minor",
+        "major"
+      ],
+      "type": "string"
+    },
+    "Effort": {
+      "enum": [
+        "small",
+        "medium",
+        "large"
+      ],
+      "type": "string"
+    },
+    "FileNote": {
+      "properties": {
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reviewHint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewHint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "$ref": "#/$defs/FileRole"
+        }
+      },
+      "required": [
+        "path",
+        "role"
+      ],
+      "type": "object"
+    },
+    "FileRef": {
+      "description": "A file, optionally narrowed to a line range, that an item is about.",
+      "properties": {
+        "lines": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LineRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "description": "Repository-relative file path.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "FileRole": {
+      "enum": [
+        "core",
+        "supporting",
+        "test",
+        "config",
+        "docs",
+        "generated",
+        "mechanical"
+      ],
+      "type": "string"
+    },
+    "Gap": {
+      "description": "Something the agent could not validate.",
+      "properties": {
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Effort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "files": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FileRef"
+          },
+          "type": "array"
+        },
+        "howToValidate": {
+          "description": "Concrete steps for whoever closes the gap.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable identifier, unique within its list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/Owner",
+          "default": "human"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "why": {
+          "description": "Why the agent could not validate this.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "why",
+        "howToValidate"
+      ],
+      "type": "object"
+    },
+    "Impact": {
+      "description": "How costly it is to get a decision wrong or change it later.",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "type": "string"
+    },
+    "LineRange": {
+      "description": "Inclusive `[start, end]` line range in the new version of a file.",
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        }
+      ],
+      "type": "array"
+    },
+    "Owner": {
+      "description": "Who should do something.",
+      "enum": [
+        "human",
+        "agent",
+        "ci",
+        "ops"
+      ],
+      "type": "string"
+    },
+    "Prompt": {
+      "properties": {
         "followUps": {
           "default": [],
-          "description": "Later user messages that changed the scope.",
-          "type": "array",
+          "description": "Later user messages that changed the scope, verbatim.",
           "items": {
             "type": "string"
-          }
+          },
+          "type": "array"
+        },
+        "original": {
+          "description": "The user's request, verbatim.",
+          "minLength": 1,
+          "type": "string"
         },
         "source": {
           "description": "Link to the issue or conversation the prompt came from.",
-          "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "original"
-      ]
+      ],
+      "type": "object"
     },
-    "summary": {
-      "type": "string",
-      "description": "What was delivered, in a few sentences."
+    "ReportVersion": {
+      "description": "Report format version.",
+      "enum": [
+        "1"
+      ],
+      "type": "string"
     },
-    "deviations": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Stable identifier, unique within its list."
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "requested": {
-            "type": "string",
-            "description": "What the prompt asked for."
-          },
-          "delivered": {
-            "type": "string",
-            "description": "What was delivered instead."
-          },
-          "reason": {
-            "type": "string",
-            "description": "Why the agent deviated."
-          },
-          "severity": {
-            "default": "minor",
-            "type": "string",
-            "enum": [
-              "minor",
-              "major"
-            ]
-          },
-          "files": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Repository-relative file path."
-                },
-                "lines": {
-                  "description": "Inclusive [start, end] line range in the new version of the file.",
-                  "type": "array",
-                  "prefixItems": [
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    }
-                  ],
-                  "items": false,
-                  "minItems": 2,
-                  "maxItems": 2
-                }
-              },
-              "required": [
-                "path"
-              ]
-            }
-          }
+    "ReviewHint": {
+      "description": "The agent's own suggestion. ReviewHub treats \"skip\" as a claim, not a verdict.",
+      "enum": [
+        "must-review",
+        "skim",
+        "skip"
+      ],
+      "type": "string"
+    },
+    "RolloutStep": {
+      "description": "Something that has to happen outside the diff for the change to ship.",
+      "properties": {
+        "blocking": {
+          "default": false,
+          "type": "boolean"
         },
-        "required": [
-          "id",
-          "title",
-          "requested",
-          "delivered",
-          "reason"
-        ]
-      }
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable identifier, unique within its list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/Owner",
+          "default": "human"
+        },
+        "prompt": {
+          "description": "Prompt to hand this step to an agent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "when": {
+          "$ref": "#/$defs/RolloutWhen",
+          "default": "before-merge"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "RolloutWhen": {
+      "enum": [
+        "before-merge",
+        "after-merge",
+        "after-deploy"
+      ],
+      "type": "string"
+    },
+    "Validation": {
+      "description": "A check the agent actually ran.",
+      "properties": {
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "evidence": {
+          "description": "Short excerpt of output proving the result.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FileRef"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Stable identifier, unique within its list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ValidationKind"
+        },
+        "result": {
+          "$ref": "#/$defs/ValidationResult"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "description",
+        "result"
+      ],
+      "type": "object"
+    },
+    "ValidationKind": {
+      "enum": [
+        "unit-test",
+        "integration-test",
+        "e2e-test",
+        "typecheck",
+        "lint",
+        "build",
+        "manual",
+        "benchmark",
+        "other"
+      ],
+      "type": "string"
+    },
+    "ValidationResult": {
+      "enum": [
+        "passed",
+        "failed",
+        "partial",
+        "skipped"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Written by the agent that authored a pull request: the context a reviewer\nneeds but cannot get from the diff.",
+  "properties": {
+    "agent": {
+      "$ref": "#/$defs/Agent"
     },
     "decisions": {
       "default": [],
-      "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Stable identifier, unique within its list."
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "context": {
-            "type": "string",
-            "description": "The question that needed answering and why the prompt did not settle it."
-          },
-          "chosen": {
-            "type": "string",
-            "description": "What the agent decided."
-          },
-          "rationale": {
-            "type": "string"
-          },
-          "impact": {
-            "default": "low",
-            "description": "How costly it is to get this wrong or change it later.",
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ]
-          },
-          "alternatives": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "description": {
-                  "type": "string"
-                },
-                "tradeoffs": {
-                  "type": "string"
-                },
-                "prompt": {
-                  "description": "A ready-to-use prompt that asks an agent to switch to this alternative.",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "title",
-                "description"
-              ]
-            }
-          },
-          "files": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Repository-relative file path."
-                },
-                "lines": {
-                  "description": "Inclusive [start, end] line range in the new version of the file.",
-                  "type": "array",
-                  "prefixItems": [
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    }
-                  ],
-                  "items": false,
-                  "minItems": 2,
-                  "maxItems": 2
-                }
-              },
-              "required": [
-                "path"
-              ]
-            }
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "context",
-          "chosen",
-          "rationale"
-        ]
-      }
+        "$ref": "#/$defs/Decision"
+      },
+      "type": "array"
     },
-    "validation": {
+    "deviations": {
       "default": [],
-      "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Stable identifier, unique within its list."
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "unit-test",
-              "integration-test",
-              "e2e-test",
-              "typecheck",
-              "lint",
-              "build",
-              "manual",
-              "benchmark",
-              "other"
-            ]
-          },
-          "description": {
-            "type": "string"
-          },
-          "command": {
-            "type": "string"
-          },
-          "result": {
-            "type": "string",
-            "enum": [
-              "passed",
-              "failed",
-              "partial",
-              "skipped"
-            ]
-          },
-          "evidence": {
-            "description": "Short excerpt of output proving the result.",
-            "type": "string"
-          },
-          "files": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Repository-relative file path."
-                },
-                "lines": {
-                  "description": "Inclusive [start, end] line range in the new version of the file.",
-                  "type": "array",
-                  "prefixItems": [
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    }
-                  ],
-                  "items": false,
-                  "minItems": 2,
-                  "maxItems": 2
-                }
-              },
-              "required": [
-                "path"
-              ]
-            }
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "description",
-          "result"
-        ]
-      }
-    },
-    "gaps": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Stable identifier, unique within its list."
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "why": {
-            "type": "string",
-            "description": "Why the agent could not validate this."
-          },
-          "howToValidate": {
-            "type": "string",
-            "description": "Concrete steps for whoever closes the gap."
-          },
-          "owner": {
-            "default": "human",
-            "type": "string",
-            "enum": [
-              "human",
-              "agent",
-              "ci",
-              "ops"
-            ]
-          },
-          "effort": {
-            "type": "string",
-            "enum": [
-              "small",
-              "medium",
-              "large"
-            ]
-          },
-          "files": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Repository-relative file path."
-                },
-                "lines": {
-                  "description": "Inclusive [start, end] line range in the new version of the file.",
-                  "type": "array",
-                  "prefixItems": [
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    }
-                  ],
-                  "items": false,
-                  "minItems": 2,
-                  "maxItems": 2
-                }
-              },
-              "required": [
-                "path"
-              ]
-            }
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "why",
-          "howToValidate"
-        ]
-      }
-    },
-    "rollout": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Stable identifier, unique within its list."
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": {
-            "default": "",
-            "type": "string"
-          },
-          "owner": {
-            "default": "human",
-            "type": "string",
-            "enum": [
-              "human",
-              "agent",
-              "ci",
-              "ops"
-            ]
-          },
-          "when": {
-            "default": "before-merge",
-            "type": "string",
-            "enum": [
-              "before-merge",
-              "after-merge",
-              "after-deploy"
-            ]
-          },
-          "blocking": {
-            "default": false,
-            "type": "boolean"
-          },
-          "prompt": {
-            "description": "Prompt to hand this step to an agent.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "title"
-        ]
-      }
+        "$ref": "#/$defs/Deviation"
+      },
+      "type": "array"
     },
     "files": {
       "default": [],
-      "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "core",
-              "supporting",
-              "test",
-              "config",
-              "docs",
-              "generated",
-              "mechanical"
-            ]
-          },
-          "note": {
-            "type": "string"
-          },
-          "reviewHint": {
-            "description": "The agent's own suggestion. ReviewHub treats 'skip' as a claim, not a verdict.",
-            "type": "string",
-            "enum": [
-              "must-review",
-              "skim",
-              "skip"
-            ]
-          }
-        },
-        "required": [
-          "path",
-          "role"
-        ]
-      }
+        "$ref": "#/$defs/FileNote"
+      },
+      "type": "array"
+    },
+    "gaps": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Gap"
+      },
+      "type": "array"
+    },
+    "prompt": {
+      "$ref": "#/$defs/Prompt"
+    },
+    "rollout": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RolloutStep"
+      },
+      "type": "array"
+    },
+    "summary": {
+      "description": "What was delivered, in a few sentences.",
+      "type": "string"
+    },
+    "validation": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Validation"
+      },
+      "type": "array"
+    },
+    "version": {
+      "$ref": "#/$defs/ReportVersion"
     }
   },
   "required": [
@@ -520,5 +549,7 @@
     "agent",
     "prompt",
     "summary"
-  ]
+  ],
+  "title": "ReviewManifest",
+  "type": "object"
 }

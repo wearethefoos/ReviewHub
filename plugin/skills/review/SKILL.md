@@ -9,8 +9,8 @@ allowed-tools: Bash(reviewhub review *), Bash(gh pr view *)
 
 Your job is to spend the reviewer's attention well: lead with what needs a human decision, and skip what doesn't.
 
-1. Resolve the pull request from `$ARGUMENTS` (`owner/repo#123` or a URL), or the current branch's pull request (`gh pr view --json url`). If `reviewhub` is missing, tell the user it installs with `cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub` (needs Rust) and ask before installing.
-2. Run `reviewhub review <pr> --json` and read it. `focus.files` is ranked: `focus` files need line-by-line reading, `skim` files a glance, `skip` files none. `bundle.reports` holds the author's manifest, the security report and metrics, any of which may be missing or invalid.
+1. Resolve the pull request from `$ARGUMENTS` (`owner/repo#123` or a URL), or the current branch's pull request (`gh pr view --json url`).
+2. Run `reviewhub review <pr> --all` and read the briefing. It ranks every file: Focus files need line-by-line reading, Skim files a glance, Skip files none. It also shows which reports exist (the author's manifest, the security report and metrics); any of them may be missing or invalid. When you need exact fields, such as an alternative's prompt or a finding's patch, use `reviewhub review <pr> --json` (diffs left out).
 3. Give the user a short briefing, in this order, leaving out empty sections:
    - **Blockers:** critical and high security findings, failed validation, blocking rollout steps.
    - **Deviations** from the original prompt, with the agent's reason. Ask whether each is acceptable.

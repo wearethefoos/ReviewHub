@@ -9,23 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
-      - name: Generated schemas and fixtures are up to date
-        run: npm run generate && git diff --exit-code schemas/ fixtures/
-      - run: npm run build
-
-  cli:
+  rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,13 +18,46 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - name: Generated TypeScript types are up to date
+        run: |
+          rm -rf extension/src/generated
+          cargo test -p reviewhub-core --features ts --locked export_bindings
+          git add -N extension/src/generated
+          git diff --exit-code extension/src/generated
+      - run: scripts/check-version.sh
+
+  extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/wasm-tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: npm ci
+      - run: npm run wasm
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
 
   plugin:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -50,3 +67,5 @@ jobs:
           claude plugin validate . --strict
           claude plugin validate ./plugin --strict
       - run: scripts/test-plugin-hook.sh
+      - run: cargo build -p reviewhub --locked
+      - run: scripts/test-plugin-shim.sh target/debug/reviewhub

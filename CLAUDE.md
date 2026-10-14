@@ -1,21 +1,20 @@
 # ReviewHub
 
-Next.js app (plus a Rust CLI in `cli/` and a Claude Code plugin in `plugin/`) that renders agent-authored GitHub pull requests as a focused review. See README.md for the product and docs/reports.md for the report formats.
+Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: a Chrome extension (`extension/`), a Claude Code plugin (`plugin/`) and a Rust CLI (`crates/cli`), all built on one Rust core (`crates/core`). See README.md, and docs/reports.md for the report formats.
 
 ## Commands
 
-- Web: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
-- CLI (`cli/`, Rust): `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
-- Plugin (`plugin/`): `claude plugin validate . --strict && claude plugin validate ./plugin --strict`, `scripts/test-plugin-hook.sh`. Bump `version` in `plugin/.claude-plugin/plugin.json` when you change it, or installed copies won't update.
-- After changing `src/lib/schema/`, `src/lib/focus/` or the demo fixture, run `npm run generate` and commit `schemas/` and `fixtures/` (CI checks they match).
+- Rust: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+- Extension (in `extension/`): `npm run wasm` (rebuild after any change to `crates/core` or `crates/wasm`), `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
+- Plugin: `claude plugin validate . --strict && claude plugin validate ./plugin --strict`, `scripts/test-plugin-hook.sh`, `scripts/test-plugin-shim.sh target/debug/reviewhub`.
+- Versions: never edit them by hand; `scripts/bump-version.sh X.Y.Z`. Release process in RELEASING.md.
 
 ## Conventions
 
-- Next.js 16: `params` and `searchParams` are Promises. Read `node_modules/next/dist/docs/` when unsure about an API.
-- Server components by default. Client components (`"use client"`) only for interactivity: copy buttons, the rollout checklist.
-- Colours come from the Primer tokens in `src/app/globals.css` (`bg-canvas`, `text-fg-muted`, `border-border`, `text-danger`, …). Don't use raw Tailwind palette colours; they break dark mode.
-- Report text is untrusted. Render it with `Markdown`/`InlineMarkdown` (no raw HTML), never `dangerouslySetInnerHTML`.
-- The demo fixture in `src/lib/sources/demo.ts` is parsed through the schemas and checked in `score.test.ts`. Keep it realistic; it doubles as the product demo.
-- Focus scoring exists twice: `src/lib/focus/` (web) and `cli/src/focus.rs` + `cli/src/classify.rs` (CLI). Change both, run `npm run generate`, and `cargo test` checks they agree (`matches_the_web_app`). Update the table in docs/reports.md too.
-- The same goes for the comment format (`src/lib/sources/extract.ts` / `cli/src/reports.rs`) and the GitHub trust rules (`src/lib/sources/github.ts` / `cli/src/github.rs`).
-- Regexes shared with Rust must avoid lookaround (the `regex` crate does not support it).
+- All logic (report types, validation, comment format, GitHub trust rules, diff parsing, scoring) lives in `crates/core`. The CLI and the extension only do I/O and rendering. Don't reimplement core logic in TypeScript; expose it through `crates/wasm` instead.
+- Report types in `crates/core/src/model.rs` are the source of truth. Doc comments become JSON Schema descriptions that agents read. After changing them: `UPDATE_SCHEMAS=1 cargo test -p reviewhub-core schemas` and `cargo test -p reviewhub-core --features ts export_bindings`; commit `schemas/` and `extension/src/generated/` (CI checks both).
+- Optional fields: use `#[serde(default, skip_serializing_if = "Option::is_none")]` so JSON never contains `null`, and structs carry `ts(export, optional_fields)` so TypeScript types match.
+- Scoring weights live in `crates/core/src/focus.rs`; keep the table in docs/reports.md in sync.
+- Extension: colours come from the Primer tokens in `extension/src/globals.css` (`bg-canvas`, `text-fg-muted`, `border-border`, …); raw Tailwind palette colours break dark mode. Report text is untrusted: render it with `Markdown`/`InlineMarkdown`, never `dangerouslySetInnerHTML`. The GitHub token stays in `chrome.storage.local` and is only sent to api.github.com.
+- Plugin: `plugin/bin/reviewhub` downloads the CLI release matching the plugin version. A plugin version must not reach `main` before its release exists (see RELEASING.md).
+- The demo pull request (`fixtures/demo/bundle.json`) is used by the extension, the CLI tests and the docs. Keep it realistic.

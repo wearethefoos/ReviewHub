@@ -14,12 +14,11 @@ Only publish when the repository opts in (its `CLAUDE.md` or `AGENTS.md` mention
 ## Steps
 
 1. **Find the pull request.** Use `$ARGUMENTS` if given (`owner/repo#123` or a URL). Otherwise use the pull request you just opened, or `gh pr view --json number,url,headRefOid`.
-2. **Check the CLI.** Run `reviewhub --version`. If it's missing, tell the user it installs with `cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub` (needs Rust) and ask before installing.
-3. **Get the schema** with `reviewhub schema manifest` if you don't know it.
-4. **Write the manifest** to a file outside the repository, such as `$TMPDIR/reviewhub-manifest.json`, following the rules below. Use `git diff <base>...HEAD` to get line numbers in the new version of each file.
-5. **Validate** with `reviewhub validate manifest <file>` and fix every error.
-6. **Publish** with `reviewhub publish manifest <file> --repo <owner/repo> --pr <number>`. It updates your earlier manifest comment if there is one, so republish whenever you push changes that affect it.
-7. **Tell the user** the comment URL and, in one or two lines, the deviations, high-impact decisions and blocking gaps you reported.
+2. **Get the schema** with `reviewhub schema manifest` if you don't know it.
+3. **Write the manifest** to a file outside the repository, such as `$TMPDIR/reviewhub-manifest.json`, following the rules below. Use `git diff <base>...HEAD` to get line numbers in the new version of each file.
+4. **Validate** with `reviewhub validate manifest <file>` and fix every error.
+5. **Publish** with `reviewhub publish manifest <file> --repo <owner/repo> --pr <number>`. It updates your earlier manifest comment if there is one, so republish whenever you push changes that affect it.
+6. **Tell the user** the comment URL and, in one or two lines, the deviations, high-impact decisions and blocking gaps you reported.
 
 ## Rules
 

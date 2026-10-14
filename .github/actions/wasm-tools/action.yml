@@ -1,0 +1,19 @@
+name: wasm tools
+description: Installs wasm-bindgen-cli at the version in Cargo.lock, and wasm-opt.
+runs:
+  using: composite
+  steps:
+    - name: Read the wasm-bindgen version
+      id: version
+      shell: bash
+      run: echo "wasm-bindgen=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: ~/.cargo/bin/wasm-bindgen
+        key: wasm-bindgen-${{ runner.os }}-${{ steps.version.outputs.wasm-bindgen }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo install wasm-bindgen-cli --locked --version "${{ steps.version.outputs.wasm-bindgen }}"
+    - shell: bash
+      run: sudo apt-get update && sudo apt-get install -y binaryen

@@ -1,0 +1,20 @@
+[package]
+name = "reviewhub-core"
+description = "ReviewHub report schemas, validation and focus scoring, shared by the CLI and the browser extension."
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+# Generates TypeScript bindings for the extension (`cargo test -p reviewhub-core --features ts`).
+ts = ["dep:ts-rs"]
+
+[dependencies]
+base64 = "0.22"
+jsonschema.workspace = true
+regex.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ts-rs = { version = "12", optional = true }

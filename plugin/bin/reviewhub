@@ -1,0 +1,97 @@
+#!/bin/sh
+# ReviewHub CLI launcher for the Claude Code plugin.
+#
+# Claude Code puts the plugin's bin/ on PATH, so `reviewhub` runs this script.
+# It runs the release binary matching this plugin's version, downloading it
+# from GitHub releases on first use and verifying it against the release's
+# SHA256SUMS. Updating the plugin therefore updates the binary.
+#
+# Environment:
+#   REVIEWHUB_BIN               run this binary instead (e.g. a local build)
+#   REVIEWHUB_CACHE_DIR         where binaries are kept
+#                               (default: $CLAUDE_PLUGIN_DATA, else ~/.cache/reviewhub)
+#   REVIEWHUB_RELEASE_BASE_URL  base URL of the release downloads (mirrors, testing)
+set -eu
+
+if [ -n "${REVIEWHUB_BIN:-}" ]; then
+  exec "$REVIEWHUB_BIN" "$@"
+fi
+
+fail() {
+  echo "reviewhub: $*" >&2
+  exit 1
+}
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -n 1)
+[ -n "$version" ] || fail "can't read the plugin version from $root/.claude-plugin/plugin.json"
+
+exe=""
+case "$(uname -s)" in
+  Linux) os=unknown-linux-musl ;;
+  Darwin) os=apple-darwin ;;
+  MINGW* | MSYS* | CYGWIN*) os=pc-windows-msvc exe=.exe ;;
+  *) fail "unsupported operating system: $(uname -s)" ;;
+esac
+case "$(uname -m)" in
+  x86_64 | amd64) arch=x86_64 ;;
+  aarch64 | arm64) arch=aarch64 ;;
+  *) fail "unsupported CPU architecture: $(uname -m)" ;;
+esac
+# Apple Silicon reports x86_64 under Rosetta; prefer the native binary.
+if [ "$os" = apple-darwin ] && [ "$arch" = x86_64 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then
+  arch=aarch64
+fi
+[ "$os" = pc-windows-msvc ] && arch=x86_64 # windows arm64 runs the x64 build
+asset="reviewhub-$arch-$os$exe"
+
+cache="${REVIEWHUB_CACHE_DIR:-${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/reviewhub}}"
+bin="$cache/v$version/reviewhub$exe"
+
+download() { # url file
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --retry 3 --connect-timeout 15 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -T 15 -t 3 -O "$2" "$1"
+  else
+    fail "curl or wget is needed to download the ReviewHub CLI"
+  fi
+}
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d ' ' -f 1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d ' ' -f 1
+  else
+    fail "sha256sum or shasum is needed to verify the ReviewHub CLI"
+  fi
+}
+
+if [ ! -x "$bin" ]; then
+  base="${REVIEWHUB_RELEASE_BASE_URL:-https://github.com/wearethefoos/ReviewHub/releases/download}/v$version"
+  mkdir -p "$cache"
+  tmp=$(mktemp -d "$cache/.download.XXXXXX")
+  trap 'rm -rf "$tmp"' EXIT INT TERM
+
+  echo "reviewhub: installing the ReviewHub CLI v$version ($arch-$os)…" >&2
+  download "$base/SHA256SUMS" "$tmp/SHA256SUMS" ||
+    fail "couldn't download $base/SHA256SUMS. Is v$version released? For a local build, set REVIEWHUB_BIN."
+  download "$base/$asset" "$tmp/$asset" || fail "couldn't download $base/$asset"
+
+  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$tmp/SHA256SUMS")
+  [ -n "$expected" ] || fail "SHA256SUMS of v$version has no entry for $asset"
+  actual=$(sha256 "$tmp/$asset")
+  [ "$expected" = "$actual" ] || fail "checksum mismatch for $asset (expected $expected, got $actual); not installing it"
+
+  chmod +x "$tmp/$asset"
+  mkdir -p "$cache/v$version"
+  mv -f "$tmp/$asset" "$bin"
+
+  # Remove binaries of other plugin versions.
+  for old in "$cache"/v*; do
+    [ "$old" = "$cache/v$version" ] || rm -rf "$old"
+  done
+fi
+
+exec "$bin" "$@"

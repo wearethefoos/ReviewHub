@@ -22,7 +22,9 @@ jobs:
       - run: npm ci
       - run: npx vitest run --coverage --coverage.reporter=lcov
       - name: Install the ReviewHub CLI
-        run: cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Publish metrics
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

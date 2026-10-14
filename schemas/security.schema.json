@@ -1,129 +1,179 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "version": {
-      "type": "string",
-      "const": "1"
+  "$defs": {
+    "Confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "type": "string"
     },
-    "scanner": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
+    "LineRange": {
+      "description": "Inclusive `[start, end]` line range in the new version of a file.",
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
         },
+        {
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        }
+      ],
+      "type": "array"
+    },
+    "ReportVersion": {
+      "description": "Report format version.",
+      "enum": [
+        "1"
+      ],
+      "type": "string"
+    },
+    "Scanner": {
+      "properties": {
         "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "minLength": 1,
           "type": "string"
         }
       },
       "required": [
         "name"
-      ]
+      ],
+      "type": "object"
     },
+    "SecurityFinding": {
+      "properties": {
+        "category": {
+          "description": "For example a CWE id such as \"CWE-89\".",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence",
+          "default": "medium"
+        },
+        "description": {
+          "type": "string"
+        },
+        "file": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "lines": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LineRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "suggestion": {
+          "$ref": "#/$defs/Suggestion"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "severity",
+        "description",
+        "file",
+        "suggestion"
+      ],
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ],
+      "type": "string"
+    },
+    "Suggestion": {
+      "properties": {
+        "diff": {
+          "description": "Unified diff that fixes the finding, applicable with `git apply`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "prompt": {
+          "description": "Prompt that asks an agent to implement the fix or refactor.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "explanation"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Written by a separate security agent that did not author the change.",
+  "properties": {
     "commit": {
       "description": "Head commit SHA the scan ran against.",
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "findings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SecurityFinding"
+      },
+      "type": "array"
+    },
+    "scanner": {
+      "$ref": "#/$defs/Scanner"
     },
     "summary": {
       "default": "",
       "type": "string"
     },
-    "findings": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "severity": {
-            "type": "string",
-            "enum": [
-              "critical",
-              "high",
-              "medium",
-              "low",
-              "info"
-            ]
-          },
-          "category": {
-            "description": "For example a CWE id such as 'CWE-89'.",
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "file": {
-            "type": "string",
-            "minLength": 1
-          },
-          "lines": {
-            "type": "array",
-            "prefixItems": [
-              {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              }
-            ],
-            "items": false,
-            "minItems": 2,
-            "maxItems": 2
-          },
-          "confidence": {
-            "default": "medium",
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ]
-          },
-          "suggestion": {
-            "type": "object",
-            "properties": {
-              "explanation": {
-                "type": "string"
-              },
-              "diff": {
-                "description": "Unified diff that fixes the finding, applicable with `git apply`.",
-                "type": "string"
-              },
-              "prompt": {
-                "description": "Prompt that asks an agent to implement the fix or refactor.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "explanation"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "severity",
-          "description",
-          "file",
-          "suggestion"
-        ]
-      }
+    "version": {
+      "$ref": "#/$defs/ReportVersion"
     }
   },
   "required": [
     "version",
     "scanner"
-  ]
+  ],
+  "title": "SecurityReport",
+  "type": "object"
 }

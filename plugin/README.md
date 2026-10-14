@@ -9,13 +9,11 @@ Makes Claude a good citizen of a ReviewHub workflow: it publishes its own accoun
 /plugin install reviewhub@reviewhub
 ```
 
-The skills use the `reviewhub` CLI, which needs Rust to install:
+The skills use the `reviewhub` CLI, which comes with the plugin: `bin/reviewhub` downloads the release binary matching the plugin's version from [GitHub releases](https://github.com/wearethefoos/ReviewHub/releases) on first use (a session start hook does it in the background), checks it against the release's `SHA256SUMS`, and keeps it in the plugin's data directory (or `~/.cache/reviewhub`). When the plugin updates, the next run fetches the matching binary and removes the old one. Supported: Linux (x86-64, ARM64), macOS (Intel, Apple Silicon), Windows (x86-64, through Git Bash). It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 
-```sh
-cargo install --locked --git https://github.com/wearethefoos/ReviewHub reviewhub
-```
+The CLI reads GitHub with `GITHUB_TOKEN`, or your `gh auth login`.
 
-It reads GitHub with `GITHUB_TOKEN`, or your `gh auth login`.
+To use a CLI you built yourself, set `REVIEWHUB_BIN=/path/to/reviewhub`.
 
 ## What's included
 
@@ -26,6 +24,7 @@ It reads GitHub with `GITHUB_TOKEN`, or your `gh auth login`.
 | `/reviewhub:security-review <pr>` | skill | Hands the pull request to the `security-reviewer` subagent, then publishes its findings, each with a patch or a fix prompt. |
 | `security-reviewer` | subagent | Reviews the change in a fresh context, without the author's conversation, and doesn't trust the manifest's claims. |
 | PR-created hook | hook | After Claude runs `gh pr create` (or the GitHub MCP equivalent) in a repository that uses ReviewHub, reminds it to publish the manifest. |
+| Session start hook | hook | Fetches the CLI in the background so the first skill doesn't wait for the download. |
 
 ## Opting a repository in
 

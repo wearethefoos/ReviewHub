@@ -1,117 +1,190 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "version": {
-      "type": "string",
-      "const": "1"
-    },
-    "commit": {
-      "type": "string"
-    },
-    "coverage": {
-      "type": "object",
+  "$defs": {
+    "Coverage": {
       "properties": {
-        "tool": {
-          "type": "string"
-        },
-        "lines": {
-          "description": "Overall line coverage.",
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100
-        },
         "baseLines": {
           "description": "Overall line coverage on the base branch, if known.",
-          "type": "number",
+          "format": "double",
+          "maximum": 100,
           "minimum": 0,
-          "maximum": 100
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "files": {
           "default": [],
-          "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "minLength": 1
-              },
-              "lines": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 100,
-                "description": "Line coverage of the whole file, in percent."
-              },
-              "branches": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 100
-              },
-              "uncoveredLines": {
-                "default": [],
-                "description": "Executable lines with zero hits in the new version of the file.",
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "maximum": 9007199254740991
-                }
-              }
-            },
-            "required": [
-              "path",
-              "lines"
-            ]
-          }
-        }
-      }
-    },
-    "quality": {
-      "type": "object",
-      "properties": {
+            "$ref": "#/$defs/FileCoverage"
+          },
+          "type": "array"
+        },
+        "lines": {
+          "description": "Overall line coverage, in percent.",
+          "format": "double",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "tool": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "FileCoverage": {
+      "properties": {
+        "branches": {
+          "format": "double",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lines": {
+          "description": "Line coverage of the whole file, in percent.",
+          "format": "double",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        "path": {
+          "minLength": 1,
           "type": "string"
         },
+        "uncoveredLines": {
+          "default": [],
+          "description": "Executable lines with zero hits in the new version of the file.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "lines"
+      ],
+      "type": "object"
+    },
+    "FileQuality": {
+      "properties": {
+        "complexity": {
+          "description": "Cyclomatic complexity of the file after the change.",
+          "format": "double",
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "complexityDelta": {
+          "description": "Change in complexity introduced by this pull request.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "duplication": {
+          "format": "double",
+          "maximum": 100,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lintIssues": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "Quality": {
+      "properties": {
         "files": {
           "default": [],
-          "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "minLength": 1
-              },
-              "complexity": {
-                "description": "Cyclomatic complexity of the file after the change.",
-                "type": "number",
-                "minimum": 0
-              },
-              "complexityDelta": {
-                "description": "Change in complexity introduced by this pull request.",
-                "type": "number"
-              },
-              "duplication": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 100
-              },
-              "lintIssues": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              }
-            },
-            "required": [
-              "path"
-            ]
-          }
+            "$ref": "#/$defs/FileQuality"
+          },
+          "type": "array"
+        },
+        "tool": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      }
+      },
+      "type": "object"
+    },
+    "ReportVersion": {
+      "description": "Report format version.",
+      "enum": [
+        "1"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Coverage and code quality numbers, usually produced in CI.",
+  "properties": {
+    "commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "coverage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Coverage"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Quality"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "$ref": "#/$defs/ReportVersion"
     }
   },
   "required": [
     "version"
-  ]
+  ],
+  "title": "MetricsReport",
+  "type": "object"
 }

@@ -1,0 +1,98 @@
+name: Release
+
+# Push a tag like v0.2.0 (see RELEASING.md). Builds the CLI for every platform
+# the Claude plugin supports and the browser extension, then publishes them
+# with SHA256SUMS as a GitHub release. The plugin downloads the binary of its
+# own version from that release and verifies it against SHA256SUMS.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the versions in the repository
+        run: scripts/check-version.sh "${GITHUB_REF_NAME#v}"
+
+  cli:
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, ext: .exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build -p reviewhub --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p out
+          cp "target/${{ matrix.target }}/release/reviewhub${{ matrix.ext }}" "out/reviewhub-${{ matrix.target }}${{ matrix.ext }}"
+          "out/reviewhub-${{ matrix.target }}${{ matrix.ext }}" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+
+  extension:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: ./.github/actions/wasm-tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: npm ci
+        working-directory: extension
+      - run: npm run wasm && npm run build
+        working-directory: extension
+      - name: Package
+        run: |
+          mkdir -p out
+          (cd extension/dist && zip -qr "../../out/reviewhub-extension-${GITHUB_REF_NAME}.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [cli, extension]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

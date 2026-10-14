@@ -1,10 +1,6 @@
-node_modules/
-.next/
-out/
-coverage/
-*.tsbuildinfo
-next-env.d.ts
-.env
-.env.local
-.DS_Store
 target/
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.DS_Store
