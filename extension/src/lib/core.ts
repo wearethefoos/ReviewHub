@@ -65,6 +65,11 @@ export function lineTarget(line: DiffLine): CommentTarget {
   return JSON.parse(wasm.lineTarget(JSON.stringify(line)));
 }
 
+/** Synchronous. The comment target for rows `from..to` (either order) of a hunk, as selected on the diff. */
+export function selectionTarget(hunk: Hunk, from: number, to: number): CommentTarget | null {
+  return JSON.parse(wasm.selectionTarget(JSON.stringify(hunk), from, to));
+}
+
 /** Synchronous. A draft review comment for a security finding, or null when its lines aren't in the diff. */
 export function findingComment(finding: SecurityFinding, hunks: Hunk[]): DraftComment | null {
   return JSON.parse(wasm.findingComment(JSON.stringify(finding), JSON.stringify(hunks)));

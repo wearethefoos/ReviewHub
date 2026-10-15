@@ -8,9 +8,10 @@ import {
   ShieldIcon,
 } from "@primer/octicons-react";
 import { Link } from "@/components/Link";
-import { lineTarget } from "@/lib/core";
+import { lineTarget, selectionTarget } from "@/lib/core";
+import { highlightHunks } from "@/lib/highlight";
 import { sameTarget, useDrafts } from "@/lib/drafts";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { DiffHunk, DiffLine } from "@/lib/types";
 import type { AnnotationKind, FileFocus, LineAnnotation } from "@/lib/types";
 import { fileAnchor, tabForRef, tabHref } from "@/lib/router";
@@ -59,14 +60,21 @@ function AnnotationCard({ annotation, pr, path }: { annotation: LineAnnotation; 
   );
 }
 
-function DiffRow({ line, kinds, path }: { line: DiffLine; kinds: AnnotationKind | null; path?: string }) {
-  const bg = line.kind === "add" ? "bg-diff-add" : line.kind === "del" ? "bg-diff-del" : "";
-  const numBg = line.kind === "add" ? "bg-diff-add-num" : line.kind === "del" ? "bg-diff-del-num" : "";
+interface RowSelection {
+  /** Called with the modifier state when the row's "+" is pressed. */
+  onStart: (event: { shiftKey: boolean }) => void;
+  onEnter: () => void;
+  selected: boolean;
+}
+
+function DiffRow({ line, kinds, html, select }: { line: DiffLine; kinds: AnnotationKind | null; html?: ReactNode; select?: RowSelection }) {
+  const bg = select?.selected ? "bg-attention-subtle" : line.kind === "add" ? "bg-diff-add" : line.kind === "del" ? "bg-diff-del" : "";
+  const numBg = select?.selected ? "" : line.kind === "add" ? "bg-diff-add-num" : line.kind === "del" ? "bg-diff-del-num" : "";
   const marker = line.kind === "add" ? "+" : line.kind === "del" ? "-" : " ";
   return (
-    <tr className={cx("group/row", bg)}>
+    <tr className={cx("group/row", bg)} onMouseEnter={select?.onEnter}>
       <td className={cx("relative w-[1%] select-none px-2 text-right align-top text-fg-muted", numBg)}>
-        {path && <AddLineComment path={path} target={lineTarget(line)} />}
+        {select && <AddLineComment onStart={select.onStart} />}
         {line.oldLine ?? ""}
       </td>
       <td className={cx("relative w-[1%] select-none px-2 text-right align-top text-fg-muted", numBg)}>
@@ -75,15 +83,69 @@ function DiffRow({ line, kinds, path }: { line: DiffLine; kinds: AnnotationKind 
       </td>
       <td className="whitespace-pre-wrap break-all py-px pl-2 pr-4 align-top">
         <span className="select-none text-fg-muted">{marker}</span>
-        {line.text}
+        {html ?? line.text}
       </td>
     </tr>
   );
 }
 
-function HunkRows({ hunk, file, pr, placed }: { hunk: DiffHunk; file: FileFocus; pr: PullRequestInfo; placed: Map<number, LineAnnotation[]> }) {
+/** Rows of a hunk being selected (while dragging) or commented on (while writing a multi-line comment). */
+interface Selection {
+  hunk: number;
+  from: number;
+  to: number;
+  dragging: boolean;
+}
+
+/** Index of the row a comment target's line refers to. */
+function rowOf(hunk: DiffHunk, line: number, side: "LEFT" | "RIGHT"): number {
+  return hunk.lines.findIndex((l) => (side === "RIGHT" ? l.newLine === line : l.kind === "del" && l.oldLine === line));
+}
+
+function HunkRows({
+  hunk,
+  index,
+  file,
+  pr,
+  placed,
+  html,
+  selection,
+  setSelection,
+}: {
+  hunk: DiffHunk;
+  index: number;
+  file: FileFocus;
+  pr: PullRequestInfo;
+  placed: Map<number, LineAnnotation[]>;
+  html?: (ReactNode | null)[];
+  selection: Selection | null;
+  setSelection: (s: Selection | null) => void;
+}) {
   const drafts = useDrafts();
   const path = file.file.path;
+
+  // Rows to mark: the range being dragged, or the range of the comment being written in this hunk.
+  let marked: [number, number] | null = null;
+  if (selection?.dragging && selection.hunk === index) {
+    marked = [Math.min(selection.from, selection.to), Math.max(selection.from, selection.to)];
+  } else if (drafts?.composing && drafts.composing.path === path && drafts.composing.target.startLine !== undefined) {
+    const t = drafts.composing.target;
+    const end = rowOf(hunk, t.line, t.side);
+    const start = rowOf(hunk, t.startLine!, t.startSide ?? t.side);
+    if (end >= 0 && start >= 0) marked = [Math.min(start, end), Math.max(start, end)];
+  }
+
+  function start(i: number, shiftKey: boolean) {
+    if (!drafts) return;
+    const anchor = selection && !selection.dragging && selection.hunk === index ? selection.from : null;
+    if (shiftKey && anchor !== null) {
+      const target = selectionTarget(hunk, anchor, i);
+      if (target) drafts.compose({ path, target, body: "" });
+      setSelection({ hunk: index, from: anchor, to: i, dragging: false });
+    } else {
+      setSelection({ hunk: index, from: i, to: i, dragging: true });
+    }
+  }
   const rows: ReactNode[] = [
     <tr key="h" className="bg-diff-hunk text-diff-hunk-fg">
       <td colSpan={2} className="select-none" />
@@ -92,7 +154,16 @@ function HunkRows({ hunk, file, pr, placed }: { hunk: DiffHunk; file: FileFocus;
   ];
   hunk.lines.forEach((line, i) => {
     const covering = line.newLine === null ? [] : file.annotations.filter((a) => line.newLine! >= a.start && line.newLine! <= a.end);
-    rows.push(<DiffRow key={i} line={line} kinds={strongestKind(covering)} path={drafts ? path : undefined} />);
+    const select: RowSelection | undefined = drafts
+      ? {
+          onStart: (e) => start(i, e.shiftKey),
+          onEnter: () => {
+            if (selection?.dragging && selection.hunk === index && selection.to !== i) setSelection({ ...selection, to: i });
+          },
+          selected: marked !== null && i >= marked[0] && i <= marked[1],
+        }
+      : undefined;
+    rows.push(<DiffRow key={i} line={line} kinds={strongestKind(covering)} html={html?.[i]} select={select} />);
     const here = line.newLine !== null ? placed.get(line.newLine) : undefined;
     if (here && (line.kind !== "del")) {
       rows.push(
@@ -154,6 +225,21 @@ const STATUS_LABEL: Record<string, string> = { added: "Added", removed: "Deleted
 
 export function FileDiff({ file, pr, defaultOpen }: { file: FileFocus; pr: PullRequestInfo; defaultOpen: boolean }) {
   const { placed, outside } = placeAnnotations(file);
+  const highlighted = useMemo(() => highlightHunks(file.hunks, file.file.path), [file]);
+  const drafts = useDrafts();
+  const [selection, setSelection] = useState<Selection | null>(null);
+
+  // Releasing the mouse after pressing a "+" (and maybe dragging over more lines) opens the comment editor.
+  useEffect(() => {
+    if (!selection?.dragging || !drafts) return;
+    const finish = () => {
+      const target = selectionTarget(file.hunks[selection.hunk]!, selection.from, selection.to);
+      if (target) drafts.compose({ path: file.file.path, target, body: "" });
+      setSelection({ ...selection, dragging: false });
+    };
+    window.addEventListener("mouseup", finish, { once: true });
+    return () => window.removeEventListener("mouseup", finish);
+  }, [selection, drafts, file]);
   const { path, previousPath, status, additions, deletions } = file.file;
   const reasons = file.signals.filter((s) => s.weight !== 0 || s.kind === "agent-hint" || s.kind === "coverage");
 
@@ -220,7 +306,17 @@ export function FileDiff({ file, pr, defaultOpen }: { file: FileFocus; pr: PullR
           <table className="w-full border-collapse font-mono text-xs leading-5">
             <tbody>
               {file.hunks.map((hunk, i) => (
-                <HunkRows key={i} hunk={hunk} file={file} pr={pr} placed={placed} />
+                <HunkRows
+                  key={i}
+                  hunk={hunk}
+                  index={i}
+                  file={file}
+                  pr={pr}
+                  placed={placed}
+                  html={highlighted?.[i]}
+                  selection={selection}
+                  setSelection={setSelection}
+                />
               ))}
             </tbody>
           </table>
@@ -231,13 +327,14 @@ export function FileDiff({ file, pr, defaultOpen }: { file: FileFocus; pr: PullR
 }
 
 /** A read-only diff, used for suggested fixes. */
-export function PatchView({ hunks }: { hunks: DiffHunk[] }) {
+export function PatchView({ hunks, path }: { hunks: DiffHunk[]; path?: string }) {
+  const highlighted = useMemo(() => (path ? highlightHunks(hunks, path) : null), [hunks, path]);
   return (
     <div className="overflow-x-auto rounded-md border border-border">
       <table className="w-full border-collapse font-mono text-xs leading-5">
         <tbody>
           {hunks.map((hunk, i) => (
-            <HunkRowsPlain key={i} hunk={hunk} />
+            <HunkRowsPlain key={i} hunk={hunk} html={highlighted?.[i]} />
           ))}
         </tbody>
       </table>
@@ -245,7 +342,7 @@ export function PatchView({ hunks }: { hunks: DiffHunk[] }) {
   );
 }
 
-function HunkRowsPlain({ hunk }: { hunk: DiffHunk }) {
+function HunkRowsPlain({ hunk, html }: { hunk: DiffHunk; html?: (ReactNode | null)[] }) {
   return (
     <>
       <tr className="bg-diff-hunk text-diff-hunk-fg">
@@ -253,7 +350,7 @@ function HunkRowsPlain({ hunk }: { hunk: DiffHunk }) {
         <td className="py-1 pl-2">{hunk.header}</td>
       </tr>
       {hunk.lines.map((line, i) => (
-        <DiffRow key={i} line={line} kinds={null} />
+        <DiffRow key={i} line={line} kinds={null} html={html?.[i]} />
       ))}
     </>
   );

@@ -78,3 +78,10 @@ pub fn annotation_comment(path: &str, annotation: &str, hunks: &str) -> Result<S
     let hunks: Vec<reviewhub_core::diff::Hunk> = parse(hunks, "hunks")?;
     Ok(json!(reviewhub_core::review::annotation_comment(path, &annotation, &hunks)).to_string())
 }
+
+/// The review comment target for the selected rows `from..=to` of a hunk, or `null`.
+#[wasm_bindgen(js_name = selectionTarget)]
+pub fn selection_target(hunk: &str, from: usize, to: usize) -> Result<String, JsError> {
+    let hunk: reviewhub_core::diff::Hunk = parse(hunk, "hunk")?;
+    Ok(json!(reviewhub_core::review::selection_target(&hunk, from, to)).to_string())
+}

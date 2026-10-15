@@ -59,7 +59,7 @@ The header shows the pull request, its state and **View on GitHub**. Below it ar
 
 In the extension (not the web app, and not on the demo), you can write a GitHub review without leaving ReviewHub. It needs a token with **Pull requests: Read and write**.
 
-- **Comment on a line:** hover a line in **Changes** and click the **+** in its gutter.
+- **Comment on a line:** hover a line in **Changes** and click the **+** in its gutter. For several lines, drag from the **+** over them, or click one line's **+** and shift-click another's (within one hunk).
 - **Comment on a finding:** security findings, deviations, decisions and gaps shown on the diff have a **Comment** link that starts a comment with their text. A security finding whose fix fits the diff becomes a GitHub suggestion the author can apply in one click. On the **Security** tab, **Add to review** does the same without opening the editor.
 - **Submit:** **Review changes** in the header shows your pending comments; add an overall comment and choose **Comment**, **Approve** or **Request changes**. Everything goes to GitHub as one review.
 

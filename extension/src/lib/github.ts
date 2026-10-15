@@ -113,7 +113,7 @@ export function createClient(token: string, fetchImpl: Fetch = fetch) {
           body: c.body,
           line: c.target.line,
           side: c.target.side,
-          ...(c.target.startLine !== undefined && { start_line: c.target.startLine, start_side: c.target.side }),
+          ...(c.target.startLine !== undefined && { start_line: c.target.startLine, start_side: c.target.startSide ?? c.target.side }),
         })),
       }),
     });
