@@ -28,7 +28,7 @@ Then review pull requests wherever you are:
 | Where | How |
 | --- | --- |
 | Claude Code | `/plugin marketplace add wearethefoos/ReviewHub`, then `/plugin install reviewhub@reviewhub`, then `/reviewhub:review owner/repo#123` |
-| Chrome | Unzip `reviewhub-extension-*.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest) and load it in `chrome://extensions` (Developer mode → Load unpacked) |
+| Chrome | Unzip `reviewhub-extension-*.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest) and load it in `chrome://extensions` (Developer mode → Load unpacked); see the [extension guide](docs/extension.md) |
 | Phone or any browser | <https://wearethefoos.github.io/ReviewHub/>, or the briefing comment on the pull request |
 | Terminal | `reviewhub review owner/repo#123` (installed by the command above) |
 
@@ -38,13 +38,15 @@ Then review pull requests wherever you are:
 
 ### Chrome extension
 
-Download `reviewhub-extension-<version>.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest), unzip it, open `chrome://extensions`, turn on **Developer mode** and choose **Load unpacked**. The extension works in Chrome and other Chromium browsers (Edge, Brave, Arc).
+Download `reviewhub-extension-<version>.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest), unzip it into a folder you'll keep, open `chrome://extensions`, turn on **Developer mode** and choose **Load unpacked** with that folder. The extension works in Chrome and other Chromium browsers (Edge, Brave, Arc).
 
 Then:
 
 - Click **Open in ReviewHub** on any pull request on github.com, or the toolbar button while on one.
 - For private repositories, and a higher rate limit than GitHub's 60 anonymous requests an hour, add a fine-grained token with read-only *Pull requests* and *Contents* access in the extension's settings. It stays in your browser and is only sent to `api.github.com`.
 - The extension's start page has a demo pull request that needs no token.
+
+See [`docs/extension.md`](docs/extension.md) for updating, the token, what each tab shows and troubleshooting.
 
 ### On your phone
 
