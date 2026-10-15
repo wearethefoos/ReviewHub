@@ -2,12 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>ReviewHub</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ReviewHub · Review agent-authored pull requests by what matters</title>
+    <meta
+      name="description"
+      content="ReviewHub shows what an agent was asked, where it deviated, what it decided and couldn't check, with an independent security review and a focus ranking of every file. Chrome extension, web app, Claude Code plugin and CLI."
+    />
+    <meta property="og:title" content="ReviewHub" />
+    <meta property="og:description" content="Your agents write the code. Review what matters." />
+    <meta property="og:image" content="https://wearethefoos.github.io/ReviewHub/img/briefing-light.png" />
+    <link rel="icon" href="icons/32.png" />
     <script>
-      location.replace("review.html" + location.search + location.hash);
+      // Links to the web app from before this page existed (?pr=…, ?demo, #…) still open the review page.
+      if (location.search || location.hash.length > 1) location.replace("review.html" + location.search + location.hash);
     </script>
   </head>
   <body>
-    <a href="review.html">Open ReviewHub</a>
+    <div id="root"></div>
+    <script type="module" src="/src/landing/main.tsx"></script>
   </body>
 </html>

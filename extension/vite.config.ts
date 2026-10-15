@@ -8,7 +8,8 @@ const root = import.meta.dirname;
 
 // Two builds of the same pages:
 // - `vite build` → dist/: the browser extension (public/: manifest, background worker, content script, icons);
-// - `vite build --mode web` → dist-web/: the web app for GitHub Pages (index redirect, web manifest, icons).
+// - `vite build --mode web` → dist-web/: the GitHub Pages site: the landing page (index.html), the web app
+//   (review.html), web manifest, icons and the landing page's screenshots.
 export default defineConfig(({ mode }) => {
   const web = mode === "web";
   return {
@@ -26,6 +27,8 @@ export default defineConfig(({ mode }) => {
         closeBundle() {
           cpSync(resolve(root, "public/icons"), resolve(root, "dist-web/icons"), { recursive: true });
           cpSync(resolve(root, "web/manifest.webmanifest"), resolve(root, "dist-web/manifest.webmanifest"));
+          // Screenshots for the landing page, in light and dark versions, from the docs.
+          cpSync(resolve(root, "../docs/screenshots"), resolve(root, "dist-web/img"), { recursive: true });
         },
       },
     ],

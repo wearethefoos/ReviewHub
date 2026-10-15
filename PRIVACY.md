@@ -1,6 +1,6 @@
 # Privacy policy
 
-ReviewHub (the Chrome extension, the web app at wearethefoos.github.io/ReviewHub, the `reviewhub` CLI and the Claude Code plugin) is published by Big Fat Coder B.V. ReviewHub has no servers: Big Fat Coder B.V. does not collect, receive, store or share any data about you or your use of ReviewHub.
+ReviewHub (the Chrome extension, the website and web app at wearethefoos.github.io/ReviewHub, the `reviewhub` CLI and the Claude Code plugin) is published by Big Fat Coder B.V. ReviewHub has no servers: Big Fat Coder B.V. does not collect, receive, store or share any data about you or your use of ReviewHub.
 
 ## What the extension handles, and where it goes
 
