@@ -8,12 +8,15 @@ import {
   ShieldIcon,
 } from "@primer/octicons-react";
 import { Link } from "@/components/Link";
+import { lineTarget } from "@/lib/core";
+import { sameTarget, useDrafts } from "@/lib/drafts";
 import type { ReactNode } from "react";
 import type { DiffHunk, DiffLine } from "@/lib/types";
 import type { AnnotationKind, FileFocus, LineAnnotation } from "@/lib/types";
 import { fileAnchor, tabForRef, tabHref } from "@/lib/router";
 import type { PullRequestInfo } from "@/lib/types";
 import { InlineMarkdown } from "./Markdown";
+import { AddLineComment, CommentComposer, CommentOnAnnotation, DraftCard } from "./ReviewComments";
 import { cx, Label, SeverityLabel, TierLabel } from "./ui";
 
 const KIND_META: Record<AnnotationKind, { label: string; icon: ReactNode; bar: string; card: string }> = {
@@ -31,7 +34,7 @@ function strongestKind(annotations: LineAnnotation[]): AnnotationKind | null {
   return null;
 }
 
-function AnnotationCard({ annotation, pr }: { annotation: LineAnnotation; pr: PullRequestInfo }) {
+function AnnotationCard({ annotation, pr, path }: { annotation: LineAnnotation; pr: PullRequestInfo; path?: string }) {
   const meta = KIND_META[annotation.kind];
   const range = annotation.start === annotation.end ? `line ${annotation.start}` : `lines ${annotation.start}–${annotation.end}`;
   return (
@@ -41,11 +44,14 @@ function AnnotationCard({ annotation, pr }: { annotation: LineAnnotation; pr: Pu
         <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">{meta.label}</span>
         {annotation.severity && <SeverityLabel severity={annotation.severity} />}
         <span className="text-xs text-fg-muted">{range}</span>
-        {annotation.ref && (
-          <Link href={tabHref(pr, tabForRef(annotation.ref), annotation.ref)} className="ml-auto text-xs hover:underline">
-            Details
-          </Link>
-        )}
+        <span className="ml-auto flex items-center gap-3">
+          {path && <CommentOnAnnotation path={path} annotation={annotation} />}
+          {annotation.ref && (
+            <Link href={tabHref(pr, tabForRef(annotation.ref), annotation.ref)} className="text-xs hover:underline">
+              Details
+            </Link>
+          )}
+        </span>
       </div>
       <p className="mt-1 font-semibold">{annotation.title}</p>
       {annotation.detail && <p className="mt-0.5 text-fg-muted">{annotation.detail}</p>}
@@ -53,13 +59,16 @@ function AnnotationCard({ annotation, pr }: { annotation: LineAnnotation; pr: Pu
   );
 }
 
-function DiffRow({ line, kinds }: { line: DiffLine; kinds: AnnotationKind | null }) {
+function DiffRow({ line, kinds, path }: { line: DiffLine; kinds: AnnotationKind | null; path?: string }) {
   const bg = line.kind === "add" ? "bg-diff-add" : line.kind === "del" ? "bg-diff-del" : "";
   const numBg = line.kind === "add" ? "bg-diff-add-num" : line.kind === "del" ? "bg-diff-del-num" : "";
   const marker = line.kind === "add" ? "+" : line.kind === "del" ? "-" : " ";
   return (
-    <tr className={bg}>
-      <td className={cx("w-[1%] select-none px-2 text-right align-top text-fg-muted", numBg)}>{line.oldLine ?? ""}</td>
+    <tr className={cx("group/row", bg)}>
+      <td className={cx("relative w-[1%] select-none px-2 text-right align-top text-fg-muted", numBg)}>
+        {path && <AddLineComment path={path} target={lineTarget(line)} />}
+        {line.oldLine ?? ""}
+      </td>
       <td className={cx("relative w-[1%] select-none px-2 text-right align-top text-fg-muted", numBg)}>
         {kinds && <span className={cx("absolute inset-y-0 right-0 w-1", KIND_META[kinds].bar)} aria-label={KIND_META[kinds].label} />}
         {line.newLine ?? ""}
@@ -73,6 +82,8 @@ function DiffRow({ line, kinds }: { line: DiffLine; kinds: AnnotationKind | null
 }
 
 function HunkRows({ hunk, file, pr, placed }: { hunk: DiffHunk; file: FileFocus; pr: PullRequestInfo; placed: Map<number, LineAnnotation[]> }) {
+  const drafts = useDrafts();
+  const path = file.file.path;
   const rows: ReactNode[] = [
     <tr key="h" className="bg-diff-hunk text-diff-hunk-fg">
       <td colSpan={2} className="select-none" />
@@ -81,18 +92,35 @@ function HunkRows({ hunk, file, pr, placed }: { hunk: DiffHunk; file: FileFocus;
   ];
   hunk.lines.forEach((line, i) => {
     const covering = line.newLine === null ? [] : file.annotations.filter((a) => line.newLine! >= a.start && line.newLine! <= a.end);
-    rows.push(<DiffRow key={i} line={line} kinds={strongestKind(covering)} />);
+    rows.push(<DiffRow key={i} line={line} kinds={strongestKind(covering)} path={drafts ? path : undefined} />);
     const here = line.newLine !== null ? placed.get(line.newLine) : undefined;
     if (here && (line.kind !== "del")) {
       rows.push(
         <tr key={`a${i}`} className="bg-canvas-subtle">
           <td colSpan={3}>
             {here.map((a, j) => (
-              <AnnotationCard key={j} annotation={a} pr={pr} />
+              <AnnotationCard key={j} annotation={a} pr={pr} path={path} />
             ))}
           </td>
         </tr>,
       );
+    }
+    if (drafts) {
+      const target = lineTarget(line);
+      const here = drafts.drafts.filter((d) => d.path === path && sameTarget(d.target, target));
+      const composing = drafts.composing && !drafts.composing.id && drafts.composing.path === path && sameTarget(drafts.composing.target, target);
+      if (here.length || composing) {
+        rows.push(
+          <tr key={`c${i}`} className="bg-canvas-subtle">
+            <td colSpan={3}>
+              {here.map((d) => (
+                <DraftCard key={d.id} draft={d} />
+              ))}
+              {composing && <CommentComposer composing={drafts.composing!} />}
+            </td>
+          </tr>,
+        );
+      }
     }
   });
   return <>{rows}</>;
@@ -178,7 +206,7 @@ export function FileDiff({ file, pr, defaultOpen }: { file: FileFocus; pr: PullR
       {outside.length > 0 && (
         <div className="border-b border-border bg-canvas-subtle py-1">
           {outside.map((a, i) => (
-            <AnnotationCard key={i} annotation={a} pr={pr} />
+            <AnnotationCard key={i} annotation={a} pr={pr} path={path} />
           ))}
         </div>
       )}

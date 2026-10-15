@@ -1,12 +1,14 @@
 import { ShieldCheckIcon, ShieldIcon } from "@primer/octicons-react";
 import { Link } from "@/components/Link";
 import { splitDiff } from "@/lib/core";
+import { useDrafts } from "@/lib/drafts";
 import { fileAnchor, tabHref } from "@/lib/router";
 import type { SecurityReport, Severity } from "@/lib/types";
 import type { PullRequestInfo } from "@/lib/types";
 import { CopyButton } from "../CopyButton";
 import { PatchView } from "../FileDiff";
 import { Markdown } from "../Markdown";
+import { AddFindingToReview } from "../ReviewComments";
 import { Box, BoxHeader, Code, EmptyState, Label, SectionHeading, SeverityLabel } from "../ui";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -26,6 +28,7 @@ function combinedPrompt(report: SecurityReport, pr: PullRequestInfo): string {
 }
 
 export function Security({ pr, report, error }: { pr: PullRequestInfo; report?: SecurityReport; error?: string }) {
+  const reviewing = useDrafts() !== null;
   if (!report) {
     return (
       <EmptyState icon={<ShieldIcon size={24} />} title={error ? "The security report could not be read" : "No security report yet"}>
@@ -121,8 +124,9 @@ export function Security({ pr, report, error }: { pr: PullRequestInfo; report?: 
                     </details>
                   )}
                 </div>
-                {(f.suggestion.diff || f.suggestion.prompt) && (
+                {(f.suggestion.diff || f.suggestion.prompt || reviewing) && (
                   <div className="flex flex-wrap gap-2 border-t border-border px-4 py-2">
+                    {reviewing && <AddFindingToReview finding={f} />}
                     {f.suggestion.diff && <CopyButton text={f.suggestion.diff.endsWith("\n") ? f.suggestion.diff : `${f.suggestion.diff}\n`} label="Copy patch (git apply)" />}
                     {f.suggestion.prompt && <CopyButton text={f.suggestion.prompt} label="Copy agent prompt" />}
                   </div>

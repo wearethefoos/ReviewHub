@@ -65,8 +65,9 @@ function Options() {
               fine-grained token
             </a>{" "}
             with read-only <span className="font-medium">Pull requests</span> and <span className="font-medium">Contents</span> access to the repositories you
-            review. {web ? "It stays in this browser tab unless you choose to remember it" : "It is stored in this browser only"} and is
-            only sent to <Code>api.github.com</Code>.
+            review{web ? "" : <>; to comment, approve and request changes from ReviewHub, give it <span className="font-medium">Pull requests: Read and write</span> instead</>}.{" "}
+            {web ? "It stays in this browser tab unless you choose to remember it" : "It is stored in this browser only"} and is only sent to{" "}
+            <Code>api.github.com</Code>.
           </p>
           <input
             id="token"

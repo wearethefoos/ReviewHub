@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::classify::{detect_role, is_code_file, sensitive_area};
 use crate::diff::{Hunk, added_lines, parse_patch};
@@ -99,7 +99,7 @@ pub struct Signal {
     pub reference: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 /// Declared in display priority: when annotations overlap, the first kind wins.
@@ -111,7 +111,7 @@ pub enum AnnotationKind {
     Uncovered,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, optional_fields))]
 pub struct Annotation {
     pub kind: AnnotationKind,

@@ -82,3 +82,45 @@ describe("loading a pull request", () => {
     await expect(client.fetchPullRequest({ owner: "acme", repo: "private", number: 1 })).rejects.toThrow(/add a token/);
   });
 });
+
+describe("submitReview", () => {
+  it("sends one review with its line comments and reports GitHub's reason on failure", async () => {
+    const sent: { url: string; init: RequestInit }[] = [];
+    let status = 200;
+    const fake = (async (url: string, init: RequestInit) => {
+      sent.push({ url, init });
+      return status === 200
+        ? new Response(JSON.stringify({ html_url: "https://github.com/o/r/pull/1#pullrequestreview-9" }), { status })
+        : new Response(JSON.stringify({ message: "Unprocessable Entity", errors: ["Can not approve your own pull request"] }), { status });
+    }) as unknown as typeof fetch;
+    const client = createClient("tok", fake);
+    const ref = { owner: "o", repo: "r", number: 1 };
+    const url = await client.submitReview(ref, {
+      commitId: "abc",
+      event: "REQUEST_CHANGES",
+      body: "Fix the injection.",
+      comments: [
+        { path: "a.ts", target: { line: 12, side: "RIGHT", startLine: 10 }, body: "here" },
+        { path: "b.ts", target: { line: 3, side: "LEFT" }, body: "why delete?" },
+      ],
+    });
+    expect(url).toBe("https://github.com/o/r/pull/1#pullrequestreview-9");
+    expect(sent[0]!.url).toBe("https://api.github.com/repos/o/r/pulls/1/reviews");
+    expect((sent[0]!.init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+    expect(JSON.parse(sent[0]!.init.body as string)).toEqual({
+      commit_id: "abc",
+      event: "REQUEST_CHANGES",
+      body: "Fix the injection.",
+      comments: [
+        { path: "a.ts", body: "here", line: 12, side: "RIGHT", start_line: 10, start_side: "RIGHT" },
+        { path: "b.ts", body: "why delete?", line: 3, side: "LEFT" },
+      ],
+    });
+
+    status = 422;
+    await expect(client.submitReview(ref, { commitId: "abc", event: "APPROVE", body: "", comments: [] })).rejects.toThrow(
+      "Can not approve your own pull request",
+    );
+    expect(JSON.parse(sent[1]!.init.body as string)).not.toHaveProperty("body");
+  });
+});
