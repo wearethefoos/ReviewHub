@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/wearethefoos/ReviewHub/compare/v0.5.1...v0.6.0) (2026-10-15)
+
+
+### Features
+
+* **web:** a project website, and a README that shows what ReviewHub does ([#16](https://github.com/wearethefoos/ReviewHub/issues/16)) ([d264413](https://github.com/wearethefoos/ReviewHub/commit/d26441312c8ae5791c489e390def77d12957a096))
+
+
+### Bug fixes
+
+* **plugin:** write reports to private temp files ([#15](https://github.com/wearethefoos/ReviewHub/issues/15)) ([22a66a5](https://github.com/wearethefoos/ReviewHub/commit/22a66a5f5b932fd9aaafd33f39c48f443c91ec2d))
+
 ## [0.5.1](https://github.com/wearethefoos/ReviewHub/compare/v0.5.0...v0.5.1) (2026-10-15)
 
 
