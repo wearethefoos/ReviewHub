@@ -3,7 +3,7 @@
 //! from the mobile app). Writes the plugin's skills and subagent under
 //! `.claude/`, a launcher pinned to this CLI's version, hooks in
 //! `.claude/settings.json`, an opt-in note in `CLAUDE.md`, and the briefing
-//! workflow. The plugin's files are compiled in, so there is one source.
+//! and security review workflows. The plugin's files are compiled in, so there is one source.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -74,6 +74,11 @@ fn generated(with_workflow: bool) -> Vec<Generated> {
         files.push(file(
             ".github/workflows/reviewhub.yml",
             &include_str!("../templates/reviewhub.yml").replace("{{VERSION}}", VERSION),
+            false,
+        ));
+        files.push(file(
+            ".github/workflows/reviewhub-security.yml",
+            &include_str!("../templates/reviewhub-security.yml").replace("{{VERSION}}", VERSION),
             false,
         ));
     }
@@ -220,8 +225,12 @@ mod tests {
         assert!(first.changes.iter().all(|(_, c)| *c == Change::Created));
         assert!(!run(&dir, true, true).unwrap().changed(), "a second run changes nothing");
         assert_eq!(fs::read_to_string(dir.join(".claude/reviewhub/bin/VERSION")).unwrap().trim(), VERSION);
-        let workflow = fs::read_to_string(dir.join(".github/workflows/reviewhub.yml")).unwrap();
-        assert!(workflow.contains(&format!("REVIEWHUB_VERSION: \"{VERSION}\"")) && !workflow.contains("{{VERSION}}"));
+        for name in ["reviewhub.yml", "reviewhub-security.yml"] {
+            let workflow = fs::read_to_string(dir.join(".github/workflows").join(name)).unwrap();
+            assert!(
+                workflow.contains(&format!("REVIEWHUB_VERSION: \"{VERSION}\"")) && !workflow.contains("{{VERSION}}")
+            );
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

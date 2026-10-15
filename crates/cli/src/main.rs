@@ -16,6 +16,7 @@ use clap::{Parser, Subcommand};
 use regex::Regex;
 use serde_json::{Value, json};
 
+use reviewhub_core::ci;
 use reviewhub_core::focus::{FocusAnalysis, FocusInput, Tier, analyze};
 use reviewhub_core::lcov;
 use reviewhub_core::model::{Coverage, MetricsReport, PullRequestBundle, ReportVersion};
@@ -79,19 +80,32 @@ enum Cmd {
     /// Set up a repository for ReviewHub in Claude Code, including cloud sessions that can't install plugins
     #[command(
         after_help = "Writes the ReviewHub skills and security subagent under .claude/, a launcher pinned to this CLI's \
-version, hooks in .claude/settings.json, a note in CLAUDE.md and the PR briefing workflow. Commit the result. \
-Run it again with a newer CLI to update."
+version, hooks in .claude/settings.json, a note in CLAUDE.md, and the PR briefing and security review workflows. \
+Commit the result. Run it again with a newer CLI to update."
     )]
     Init {
         /// Repository root [default: the git repository containing the current directory]
         #[arg(long, value_name = "DIR")]
         dir: Option<PathBuf>,
-        /// Don't add .github/workflows/reviewhub.yml
+        /// Don't add the workflows (.github/workflows/reviewhub.yml and reviewhub-security.yml)
         #[arg(long)]
         no_workflow: bool,
         /// Only report whether the files are up to date; exit with 1 if not
         #[arg(long)]
         check: bool,
+    },
+    /// Tell whether CI or this session should run a pull request's security review
+    #[command(
+        after_help = "Prints `ci` or `session` with an explanation. Looks for the \"ReviewHub security review\" job \
+of the workflow `reviewhub init` adds, on the pull request's head commit, waiting up to --wait seconds for it to start. \
+Uses GITHUB_TOKEN, or the token from `gh auth login`."
+    )]
+    SecurityStatus {
+        /// owner/repo#123 or a pull request URL
+        pr: String,
+        /// Seconds to wait for the workflow to start before deciding `session`
+        #[arg(long, default_value_t = 60)]
+        wait: u64,
     },
     /// Check a report against its schema
     Validate {
@@ -285,6 +299,23 @@ fn run(cli: Cli) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report.to_value())?);
         }
         Cmd::Comment { kind, file } => println!("{}", reports::render_comment(kind, &read_report(kind, &file)?)),
+        Cmd::SecurityStatus { pr, wait } => {
+            let (owner, name, number) = parse_pr_ref(&pr)
+                .ok_or_else(|| anyhow!("expected owner/repo#123 or a pull request URL, got {pr:?}"))?;
+            let gh = GitHub::new(github::resolve_token());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait);
+            let decision = loop {
+                let runs = gh.head_check_runs(&owner, &name, number, ci::SECURITY_JOB)?;
+                match ci::security_reviewer(&runs) {
+                    ci::SecurityReviewer::Pending if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_secs(10))
+                    }
+                    ci::SecurityReviewer::Pending => break ci::SecurityReviewer::Session,
+                    decided => break decided,
+                }
+            };
+            println!("{}", decision.explain());
+        }
         Cmd::Publish { kind, file, repo, pr } => {
             let report = read_report(kind, &file)?;
             let Some((owner, name)) = repo.split_once('/') else { bail!("--repo must be owner/repo") };
