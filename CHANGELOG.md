@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/wearethefoos/ReviewHub/compare/v0.4.0...v0.5.0) (2026-10-15)
+
+
+### Features
+
+* automatic security and metrics reports, and review actions in the extension ([#11](https://github.com/wearethefoos/ReviewHub/issues/11)) ([69880b6](https://github.com/wearethefoos/ReviewHub/commit/69880b6a45a365f5ae44a2ef956fbc18f4d909e3))
+
 ## [0.4.0](https://github.com/wearethefoos/ReviewHub/compare/v0.3.0...v0.4.0) (2026-10-15)
 
 
