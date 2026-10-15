@@ -28,13 +28,25 @@ Scopes are optional; useful ones are `core`, `cli`, `extension`, `plugin`, `web`
 
 While the builds in step 3 are running, the plugin on `main` already has the new version but its binaries aren't downloadable yet. The launcher (`plugin/bin/reviewhub`) handles that: it keeps using the newest CLI it already has and tells the user, and fetches the new one once it's there.
 
-If you publish the extension on the Chrome Web Store, upload `reviewhub-extension-vX.Y.Z.zip` from the release.
+5. **The extension goes to the Chrome Web Store.** Once the [Chrome Web Store secrets](#chrome-web-store) are set, the release workflow uploads the extension zip and submits it for review; Chrome publishes it when the review passes (usually within a few days) and installed copies update themselves. Without the secrets, that step is skipped with a notice.
 
 ## Setup
 
 - **`RELEASE_PLEASE_TOKEN` secret (recommended).** Pull requests and commits made with the workflow's own `GITHUB_TOKEN` don't trigger other workflows, so without this secret CI won't run on the release pull request. Add a fine-grained personal access token (or a GitHub App token) with *Contents* and *Pull requests* read/write access to this repository.
 - **Settings → Actions → General → Workflow permissions:** allow GitHub Actions to create pull requests.
 - **Settings → Pages → Source: GitHub Actions**, for the web app.
+
+## Chrome Web Store
+
+The first submission is done by hand; after that, every release uploads itself.
+
+1. **Register** as a Chrome Web Store developer at the [developer dashboard](https://chrome.google.com/webstore/devconsole) (one-time registration fee). Register with, or add, the Big Fat Coder B.V. account details, and verify the contact email.
+2. **Create the item:** **Add new item**, upload `reviewhub-extension-vX.Y.Z.zip` from the latest release, and fill in the store listing, privacy practices and distribution from [`docs/chrome-web-store/`](docs/chrome-web-store/README.md) (text, screenshots and the promo tile are there). Submit it for review.
+3. **Note two IDs:** the item's extension ID (on the item's page, also in its store URL) and your publisher ID (in the dashboard's URL, or under **Account**).
+4. **Get API credentials:** in a Google Cloud project, enable the Chrome Web Store API and create an OAuth client and a refresh token, following the [chrome-webstore-upload-keys guide](https://github.com/fregante/chrome-webstore-upload-keys).
+5. **Add repository secrets** (Settings → Secrets and variables → Actions): `CHROME_EXTENSION_ID`, `CHROME_PUBLISHER_ID`, `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`.
+
+From then on, the `chrome-web-store` job of the [release workflow](.github/workflows/release.yml) runs [`chrome-webstore-upload-cli`](https://github.com/fregante/chrome-webstore-upload-cli) with the release's zip. The store rejects a version it already has, so when rebuilding an existing release by hand, untick **Upload the extension to the Chrome Web Store**. A listing change that needs a new review (new permissions, a changed privacy answer) is done in the dashboard; until it has been published there once, API submissions may be refused.
 
 ## By hand
 

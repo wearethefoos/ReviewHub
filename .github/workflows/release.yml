@@ -5,6 +5,9 @@ name: Release
 # downloads the binary of its own version from that release and verifies it
 # against SHA256SUMS. See RELEASING.md.
 #
+# Then uploads the extension to the Chrome Web Store and submits it for review,
+# once the CHROME_* secrets are set (RELEASING.md).
+#
 # Normally called by the Release Please workflow for the release it just
 # created. Can also run by hand from the Actions tab (it then creates the tag
 # and the release), or on a pushed tag.
@@ -22,6 +25,10 @@ on:
       version:
         description: "Version to release, e.g. 0.2.0 (must match the versions in the repository)"
         required: true
+      chrome-web-store:
+        description: Upload the extension to the Chrome Web Store (turn off when rebuilding an existing release)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -121,3 +128,26 @@ jobs:
           else
             gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --target "$GITHUB_SHA" --generate-notes
           fi
+
+  chrome-web-store:
+    needs: publish
+    if: github.event_name != 'workflow_dispatch' || inputs.chrome-web-store
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: out
+      - name: Upload and submit for review
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          if [ -z "$EXTENSION_ID" ]; then
+            echo "::notice::CHROME_EXTENSION_ID isn't set; not publishing to the Chrome Web Store (see RELEASING.md)."
+            exit 0
+          fi
+          npx --yes chrome-webstore-upload-cli@4.0.2 --source "out/reviewhub-extension-${TAG}.zip"
