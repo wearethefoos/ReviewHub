@@ -324,14 +324,14 @@
       "properties": {
         "followUps": {
           "default": [],
-          "description": "Later user messages that changed the scope, verbatim.",
+          "description": "Later user messages that changed the scope, summarized the same way. Leave out messages\nthat only steered the session (\"open the PR\", \"looks good\").",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "original": {
-          "description": "The user's request, verbatim.",
+          "description": "The user's request, rephrased for reviewers: its goal, scope and constraints, in the\nuser's terms where possible. Not a verbatim copy: prompts can hold private data, and the\nmanifest is public on the pull request. Leave out credentials, personal data, customer\ndetails, internal hostnames and anything else the user wouldn't post on the pull request.",
           "minLength": 1,
           "type": "string"
         },

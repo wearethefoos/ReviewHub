@@ -22,7 +22,7 @@ Claude Code cloud sessions (including ones started from the Claude app) can't in
 | Component | Kind | What it does |
 | --- | --- | --- |
 | `/reviewhub:review <pr>` | skill | Briefs you on a pull request: blockers, deviations, decisions to make, what wasn't validated, and which files to read. Then walks you through them. Never posts to GitHub without asking. |
-| `reviewhub:review-manifest` | skill | After Claude opens or updates a pull request, writes the review manifest (original prompt, deviations, decisions, validation evidence, gaps, rollout) and publishes it as a PR comment. |
+| `reviewhub:review-manifest` | skill | After Claude opens or updates a pull request, writes the review manifest (the request, deviations, decisions, validation evidence, gaps, rollout) and publishes it as a PR comment. |
 | `/reviewhub:security-review <pr>` | skill | Hands the pull request to the `security-reviewer` subagent, then publishes its findings, each with a patch or a fix prompt. |
 | `security-reviewer` | subagent | Reviews the change in a fresh context, without the author's conversation, and doesn't trust the manifest's claims. |
 | PR-created hook | hook | After Claude runs `gh pr create` (or the GitHub MCP equivalent) in a repository that uses ReviewHub, reminds it to publish the manifest. |

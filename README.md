@@ -4,7 +4,7 @@ Review agent-authored pull requests by what matters, not by line count.
 
 Agents produce more code than people can read line by line, and much of it doesn't need reading. ReviewHub puts three reports next to the GitHub diff and shows a reviewer only what needs their judgement:
 
-- **The ask:** the user's original prompt and follow-ups, next to what was delivered.
+- **The ask:** what the user asked for, summarized by the agent without private details, next to what was delivered.
 - **Deviations:** where the agent did something other than what was asked, and why.
 - **Decisions:** questions the prompt left open, what the agent chose, and alternatives with ready-to-run prompts.
 - **Validation:** what the agent ran to prove the change works, with evidence.
