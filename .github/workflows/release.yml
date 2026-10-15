@@ -150,4 +150,10 @@ jobs:
             echo "::notice::CHROME_EXTENSION_ID isn't set; not publishing to the Chrome Web Store (see RELEASING.md)."
             exit 0
           fi
-          npx --yes chrome-webstore-upload-cli@4.0.2 --source "out/reviewhub-extension-${TAG}.zip"
+          set -o pipefail
+          if ! npx --yes chrome-webstore-upload-cli@4.0.2 --source "out/reviewhub-extension-${TAG}.zip" 2>&1 | tee upload.log; then
+            if grep -q "in review" upload.log; then
+              echo "::error::The previous version is still in review on the Chrome Web Store, so ${TAG} can't be uploaded yet. Once that review is done, re-run this job (Re-run failed jobs)."
+            fi
+            exit 1
+          fi
