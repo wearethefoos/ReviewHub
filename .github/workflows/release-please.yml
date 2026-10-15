@@ -71,5 +71,6 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
+    secrets: inherit # the Chrome Web Store credentials
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
