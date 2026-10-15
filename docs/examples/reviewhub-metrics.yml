@@ -1,5 +1,7 @@
 # Example workflow for a repository reviewed with ReviewHub: publishes test
 # coverage for every pull request as a ReviewHub metrics report.
+# `reviewhub init` writes a fuller one for the test stacks it detects
+# (.github/workflows/reviewhub-metrics.yml); use this when you don't use init.
 # Adjust the test command to produce coverage/lcov.info for your stack.
 # `reviewhub publish` reads the repository from GITHUB_REPOSITORY.
 # Comments posted with the workflow token don't trigger other workflows, so

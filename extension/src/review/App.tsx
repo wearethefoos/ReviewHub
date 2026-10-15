@@ -12,6 +12,7 @@ import { Rollout } from "@/components/views/Rollout";
 import { Security } from "@/components/views/Security";
 import { Verification } from "@/components/views/Verification";
 import type { Review } from "@/lib/core";
+import { DraftsProvider } from "@/lib/drafts";
 import { formatPrRef, parsePrRef } from "@/lib/github";
 import { navigate, routeHref, useRoute, type TabId } from "@/lib/router";
 import { EXTENSION_URL, isExtension, loadSettings, openSettings } from "@/lib/settings";
@@ -136,7 +137,7 @@ function tabCounts(review: Review): TabCounts {
   };
 }
 
-function ReviewView({ review, tab, onReload }: { review: Review; tab: TabId; onReload: () => void }) {
+function ReviewView({ review, tab, onReload, canReview }: { review: Review; tab: TabId; onReload: () => void; canReview: boolean }) {
   const { bundle, focus } = review;
   const { pr, reports } = bundle;
   const manifest = reports.manifest?.data;
@@ -147,7 +148,7 @@ function ReviewView({ review, tab, onReload }: { review: Review; tab: TabId; onR
     document.title = `${pr.title} · ${pr.owner}/${pr.repo}#${pr.number} · ReviewHub`;
   }, [pr]);
 
-  return (
+  const view = (
     <>
       <PrHeader pr={pr} active={tab} counts={tabCounts(review)} />
       <OpenOnHash />
@@ -191,6 +192,13 @@ function ReviewView({ review, tab, onReload }: { review: Review; tab: TabId; onR
       </main>
     </>
   );
+  return canReview ? (
+    <DraftsProvider key={`${pr.owner}/${pr.repo}#${pr.number}`} pr={pr} focus={focus} findings={security?.findings ?? []}>
+      {view}
+    </DraftsProvider>
+  ) : (
+    view
+  );
 }
 
 export function App() {
@@ -217,7 +225,10 @@ export function App() {
           </EmptyState>
         </main>
       )}
-      {state.status === "ready" && <ReviewView review={state.review} tab={route.tab} onReload={reload} />}
+      {state.status === "ready" && (
+        // Reviews are written in the extension only (the web app has no write access), and not on the demo.
+        <ReviewView review={state.review} tab={route.tab} onReload={reload} canReview={isExtension() && !route.demo} />
+      )}
     </div>
   );
 }

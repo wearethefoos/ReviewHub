@@ -4,7 +4,10 @@
 mod briefing;
 mod github;
 mod init;
+mod metrics;
+mod push;
 mod render;
+mod stacks;
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -16,6 +19,7 @@ use clap::{Parser, Subcommand};
 use regex::Regex;
 use serde_json::{Value, json};
 
+use reviewhub_core::ci;
 use reviewhub_core::focus::{FocusAnalysis, FocusInput, Tier, analyze};
 use reviewhub_core::lcov;
 use reviewhub_core::model::{Coverage, MetricsReport, PullRequestBundle, ReportVersion};
@@ -79,20 +83,59 @@ enum Cmd {
     /// Set up a repository for ReviewHub in Claude Code, including cloud sessions that can't install plugins
     #[command(
         after_help = "Writes the ReviewHub skills and security subagent under .claude/, a launcher pinned to this CLI's \
-version, hooks in .claude/settings.json, a note in CLAUDE.md and the PR briefing workflow. Commit the result. \
-Run it again with a newer CLI to update."
+version, hooks in .claude/settings.json, a note in CLAUDE.md, and the PR briefing, security review and metrics workflows (with a coverage script for the test stacks it detects). \
+Commit the result. Run it again with a newer CLI to update."
     )]
     Init {
         /// Repository root [default: the git repository containing the current directory]
         #[arg(long, value_name = "DIR")]
         dir: Option<PathBuf>,
-        /// Don't add .github/workflows/reviewhub.yml
+        /// Don't add the workflows (briefing, security review, metrics) or the coverage script
         #[arg(long)]
         no_workflow: bool,
+        /// Install the git pre-push hook that gets pushes from agent sessions security-reviewed
+        /// [default: ask on a terminal; kept once installed]
+        #[arg(long, conflicts_with = "no_pre_push")]
+        pre_push: bool,
+        /// Don't install the git pre-push hook, and remove ReviewHub's
+        #[arg(long)]
+        no_pre_push: bool,
         /// Only report whether the files are up to date; exit with 1 if not
         #[arg(long)]
         check: bool,
     },
+    /// Tell whether CI or this session should run a pull request's security review
+    #[command(
+        after_help = "Prints `ci` or `session` with an explanation. Looks for the \"ReviewHub security review\" job \
+of the workflow `reviewhub init` adds, on the pull request's head commit, waiting up to --wait seconds for it to start. \
+Uses GITHUB_TOKEN, or the token from `gh auth login`."
+    )]
+    SecurityStatus {
+        /// owner/repo#123 or a pull request URL
+        pr: String,
+        /// Seconds to wait for the workflow to start before deciding `session`
+        #[arg(long, default_value_t = 60)]
+        wait: u64,
+    },
+    /// Run a headless Claude Code security review of a pull request and publish it
+    #[command(
+        after_help = "Skips the review when the pull request already has a security report for its head commit, or \
+when the ReviewHub security review workflow reviews it (unless --force). Needs Claude Code (`claude`) and GITHUB_TOKEN or \
+`gh auth login`. Run it from a checkout of the repository."
+    )]
+    SecurityReview {
+        /// owner/repo#123 or a pull request URL
+        pr: String,
+        /// Wait until the pull request's head is this commit (after a push) before reviewing
+        #[arg(long, value_name = "SHA")]
+        sha: Option<String>,
+        /// Review even if CI does or a report for the head commit exists
+        #[arg(long)]
+        force: bool,
+    },
+    /// The git pre-push hook installed by `reviewhub init` (reads git's pre-push input on stdin)
+    #[command(hide = true)]
+    PrePush { remote: Option<String>, url: Option<String> },
     /// Check a report against its schema
     Validate {
         #[arg(value_parser = parse_kind, value_name = "manifest|security|metrics")]
@@ -105,11 +148,19 @@ Run it again with a newer CLI to update."
         #[arg(value_parser = parse_kind, value_name = "manifest|security|metrics")]
         kind: Kind,
     },
-    /// Build a metrics report from an lcov coverage file
+    /// Build a metrics report: coverage from lcov files, complexity of the changed files
+    #[command(
+        after_help = "Run it from the repository root. Relative paths in an lcov file are resolved against the root, \
+or else against the directories above the lcov file (for a project in a subdirectory)."
+    )]
     Metrics {
-        #[arg(long, value_name = "FILE")]
-        lcov: PathBuf,
-        /// Strip this prefix from absolute paths [default: current directory]
+        /// lcov coverage files (e.g. one per language)
+        #[arg(long, value_name = "FILE", num_args = 1.., required_unless_present = "base")]
+        lcov: Vec<PathBuf>,
+        /// Measure the complexity of the files changed since this git ref (its merge base with HEAD)
+        #[arg(long, value_name = "REF")]
+        base: Option<String>,
+        /// Repository root; stripped from absolute paths [default: current directory]
         #[arg(long, value_name = "DIR")]
         root: Option<PathBuf>,
         /// Line coverage of the base branch, in percent
@@ -239,12 +290,14 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Init { dir, no_workflow, check } => {
+        Cmd::Init { dir, no_workflow, pre_push, no_pre_push, check } => {
             let root = match dir {
                 Some(dir) => dir,
                 None => git_root().unwrap_or(std::env::current_dir()?),
             };
-            let outcome = init::run(&root, !no_workflow, check)?;
+            let installed = init::pre_push_installed(&root);
+            let pre_push = !no_pre_push && (pre_push || installed || (!check && push::ask_install()));
+            let outcome = init::run(&root, init::Options { workflow: !no_workflow, pre_push }, check)?;
             for (path, change) in &outcome.changes {
                 let label = match change {
                     init::Change::Created if check => "missing",
@@ -258,8 +311,20 @@ fn run(cli: Cli) -> Result<()> {
             if check && outcome.changed() {
                 bail!("ReviewHub files are not up to date with this CLI (v{}); run `reviewhub init`", init::VERSION);
             }
+            if !check {
+                match init::install_git_hook(&root, pre_push) {
+                    Ok(Some(note)) => println!("{note}"),
+                    Ok(None) => {}
+                    Err(e) => eprintln!("warning: {e:#}"),
+                }
+            }
             if !check && outcome.changed() {
                 println!("\nReviewHub v{} is set up in {}. Commit these files.", init::VERSION, root.display());
+                if !pre_push {
+                    println!(
+                        "Tip: `reviewhub init --pre-push` adds a git hook that gets pushes from agent sessions security-reviewed."
+                    );
+                }
             }
         }
         Cmd::Validate { kind, file } => {
@@ -267,29 +332,67 @@ fn run(cli: Cli) -> Result<()> {
             println!("{} is a valid {} report", file.display(), kind.as_str());
         }
         Cmd::Schema { kind } => println!("{}", serde_json::to_string_pretty(&kind.schema())?),
-        Cmd::Metrics { lcov, root, base_lines, commit } => {
-            let text = std::fs::read_to_string(&lcov).with_context(|| format!("cannot read {}", lcov.display()))?;
+        Cmd::Metrics { lcov, base, root, base_lines, commit } => {
             let root = match root {
                 Some(r) => r,
                 None => std::env::current_dir()?,
             };
-            let (files, lines) = lcov::parse_lcov(&text, &root.to_string_lossy());
-            let report = MetricsReport {
-                version: ReportVersion::V1,
-                commit,
-                coverage: Some(Coverage { tool: Some("lcov".into()), lines: Some(lines), base_lines, files }),
-                quality: None,
+            let coverage = if lcov.is_empty() {
+                None
+            } else {
+                let mut text = String::new();
+                for file in &lcov {
+                    let raw =
+                        std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+                    text.push_str(&metrics::resolve_lcov_paths(&raw, &root, file));
+                    text.push('\n');
+                }
+                let (files, lines) = lcov::parse_lcov(&text, &root.to_string_lossy());
+                Some(Coverage { tool: Some("lcov".into()), lines: Some(lines), base_lines, files })
             };
+            let quality = base.map(|base| metrics::changed_quality(&root, &base)).transpose()?;
+            let report = MetricsReport { version: ReportVersion::V1, commit, coverage, quality };
             // Round-trip through validation so the output is guaranteed to be accepted.
             let report = reports::validate(Kind::Metrics, &serde_json::to_value(&report)?).map_err(|e| anyhow!(e))?;
             println!("{}", serde_json::to_string_pretty(&report.to_value())?);
         }
         Cmd::Comment { kind, file } => println!("{}", reports::render_comment(kind, &read_report(kind, &file)?)),
+        Cmd::SecurityStatus { pr, wait } => {
+            let (owner, name, number) = parse_pr_ref(&pr)
+                .ok_or_else(|| anyhow!("expected owner/repo#123 or a pull request URL, got {pr:?}"))?;
+            let gh = GitHub::new(github::resolve_token());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait);
+            let decision = loop {
+                let runs = gh.head_check_runs(&owner, &name, number, ci::SECURITY_JOB)?;
+                match ci::security_reviewer(&runs) {
+                    ci::SecurityReviewer::Pending if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_secs(10))
+                    }
+                    ci::SecurityReviewer::Pending => break ci::SecurityReviewer::Session,
+                    decided => break decided,
+                }
+            };
+            println!("{}", decision.explain());
+        }
         Cmd::Publish { kind, file, repo, pr } => {
             let report = read_report(kind, &file)?;
             let Some((owner, name)) = repo.split_once('/') else { bail!("--repo must be owner/repo") };
             let url = GitHub::new(github::resolve_token()).publish(kind, &report, owner, name, pr)?;
             println!("{url}");
+            // Remember the agent's branch for the pre-push hook, and get the pull request security-reviewed.
+            if kind == Kind::Manifest
+                && push::save_manifest(&repo, pr, &report.to_value()).is_some()
+                && init::pre_push_installed_here()
+                && let Some(message) = push::request_review(&repo, pr, None)
+            {
+                println!("{message}");
+            }
+        }
+        Cmd::SecurityReview { pr, sha, force } => push::security_review(&pr, sha.as_deref(), force)?,
+        Cmd::PrePush { url, .. } => {
+            let mut input = String::new();
+            let _ = std::io::stdin().read_to_string(&mut input);
+            push::pre_push(url.as_deref().unwrap_or(""), &input);
         }
     }
     Ok(())

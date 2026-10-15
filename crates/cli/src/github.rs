@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow, bail};
+use reviewhub_core::ci::CheckRun;
 use reviewhub_core::github::{self, RawPullRequest};
 use reviewhub_core::model::PullRequestBundle;
 use reviewhub_core::reports::{self, Kind, Report};
@@ -135,6 +136,33 @@ impl GitHub {
             report_files,
             trusted_authors,
         }))
+    }
+
+    /// The pull request's head commit.
+    pub fn head_sha(&self, owner: &str, repo: &str, number: u32) -> Result<String> {
+        let pull = self.get(&format!("/repos/{owner}/{repo}/pulls/{number}"))?;
+        pull["head"]["sha"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow!("{owner}/{repo}#{number} has no head commit"))
+    }
+
+    /// The open pull request whose head is `branch` in this repository, if any.
+    pub fn open_pull_request_for(&self, owner: &str, repo: &str, branch: &str) -> Result<Option<u32>> {
+        let pulls = self.get(&format!("/repos/{owner}/{repo}/pulls?state=open&head={owner}:{branch}&per_page=1"))?;
+        Ok(pulls[0]["number"].as_u64().and_then(|n| u32::try_from(n).ok()))
+    }
+
+    /// Check runs of the pull request's head commit with this name.
+    pub fn head_check_runs(&self, owner: &str, repo: &str, number: u32, name: &str) -> Result<Vec<CheckRun>> {
+        let pull = self
+            .request("GET", &format!("/repos/{owner}/{repo}/pulls/{number}"), None)?
+            .ok_or_else(|| anyhow!("{owner}/{repo}#{number} not found (or the token can't see it)"))?;
+        let sha = pull["head"]["sha"].as_str().ok_or_else(|| anyhow!("{owner}/{repo}#{number} has no head commit"))?;
+        let name = name.replace(' ', "%20");
+        let runs =
+            self.get(&format!("/repos/{owner}/{repo}/commits/{sha}/check-runs?check_name={name}&per_page=100"))?;
+        Ok(serde_json::from_value(runs["check_runs"].clone())?)
     }
 
     /// Creates the report comment, or updates this user's earlier comment of the same kind.

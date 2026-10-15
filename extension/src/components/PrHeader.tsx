@@ -3,6 +3,7 @@ import { Link } from "@/components/Link";
 import type { TabId } from "@/lib/router";
 import { TABS, tabHref } from "@/lib/router";
 import type { PullRequestInfo } from "@/lib/types";
+import { ReviewPanel } from "./ReviewComments";
 import { Counter, cx } from "./ui";
 
 function StateBadge({ pr }: { pr: PullRequestInfo }) {
@@ -46,11 +47,14 @@ export function PrHeader({ pr, active, counts }: { pr: PullRequestInfo; active: 
             <span className="text-success">+{pr.additions.toLocaleString("en-US")}</span>{" "}
             <span className="text-danger">−{pr.deletions.toLocaleString("en-US")}</span>
           </span>
-          {pr.htmlUrl && (
-            <a href={pr.htmlUrl} className="ml-auto inline-flex items-center gap-1 text-sm" target="_blank" rel="noreferrer">
-              View on GitHub <LinkExternalIcon size={14} />
-            </a>
-          )}
+          <span className="ml-auto flex items-center gap-4">
+            {pr.htmlUrl && (
+              <a href={pr.htmlUrl} className="inline-flex items-center gap-1 text-sm" target="_blank" rel="noreferrer">
+                View on GitHub <LinkExternalIcon size={14} />
+              </a>
+            )}
+            <ReviewPanel />
+          </span>
         </div>
         <nav aria-label="Review sections" className="-mb-px mt-4 flex gap-1 overflow-x-auto">
           {TABS.map((tab) => {

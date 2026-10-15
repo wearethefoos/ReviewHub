@@ -130,7 +130,8 @@ export function Verification({
         <SectionHeading icon={<GraphIcon size={16} />} title="Coverage and quality" />
         {!metrics ? (
           <EmptyState icon={<BeakerIcon size={24} />} title="No metrics report">
-            Publish coverage from CI with <Code>reviewhub metrics --lcov coverage/lcov.info</Code> to see which changed lines no test exercises.
+            Repositories set up with <Code>reviewhub init</Code> publish coverage and complexity from CI. By hand:{" "}
+            <Code>reviewhub metrics --lcov coverage/lcov.info --base origin/main</Code>, then <Code>reviewhub publish metrics</Code>.
           </EmptyState>
         ) : (
           <Box>

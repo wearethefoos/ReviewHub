@@ -25,7 +25,7 @@ Claude Code cloud sessions (including ones started from the Claude app) can't in
 | `reviewhub:review-manifest` | skill | After Claude opens or updates a pull request, writes the review manifest (the request, deviations, decisions, validation evidence, gaps, rollout) and publishes it as a PR comment. |
 | `/reviewhub:security-review <pr>` | skill | Hands the pull request to the `security-reviewer` subagent, then publishes its findings, each with a patch or a fix prompt. |
 | `security-reviewer` | subagent | Reviews the change in a fresh context, without the author's conversation, and doesn't trust the manifest's claims. |
-| PR-created hook | hook | After Claude runs `gh pr create` (or the GitHub MCP equivalent) in a repository that uses ReviewHub, reminds it to publish the manifest. |
+| PR-created hook | hook | After Claude runs `gh pr create` (or the GitHub MCP equivalent) in a repository that uses ReviewHub, reminds it to publish the manifest, and to have the `security-reviewer` subagent review the pull request when `reviewhub security-status` says no CI workflow does. |
 | Session start hook | hook | Fetches the CLI in the background so the first skill doesn't wait for the download. |
 
 ## Opting a repository in

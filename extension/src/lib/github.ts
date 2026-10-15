@@ -1,6 +1,8 @@
-// Fetches the raw GitHub responses for a pull request. What to make of them
-// (which comments to trust, which reports are valid) is decided in Rust.
+// Fetches the raw GitHub responses for a pull request, and submits reviews.
+// What to make of the responses (which comments to trust, which reports are
+// valid) is decided in Rust.
 import { headRepo, reportFilePaths, type RawPullRequest } from "./core";
+import type { CommentTarget } from "./types";
 
 const API = "https://api.github.com";
 const MAX_FILE_PAGES = 30; // GitHub returns at most 3000 files
@@ -91,5 +93,51 @@ export function createClient(token: string, fetchImpl: Fetch = fetch) {
     return { owner, repo, number, pull, files, comments, reportFiles, trustedAuthors };
   }
 
-  return { get, fetchPullRequest };
+  /** Submits a review with its line comments in one request. Returns the review's URL. */
+  async function submitReview(ref: PrRef, review: ReviewSubmission): Promise<string> {
+    const { owner, repo, number } = ref;
+    const res = await fetchImpl(`${API}/repos/${owner}/${repo}/pulls/${number}/reviews`, {
+      method: "POST",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify({
+        commit_id: review.commitId,
+        event: review.event,
+        ...(review.body.trim() && { body: review.body }),
+        comments: review.comments.map((c) => ({
+          path: c.path,
+          body: c.body,
+          line: c.target.line,
+          side: c.target.side,
+          ...(c.target.startLine !== undefined && { start_line: c.target.startLine, start_side: c.target.side }),
+        })),
+      }),
+    });
+    if (res.ok) return ((await res.json()) as { html_url?: string }).html_url ?? "";
+    if (res.status === 401) throw new GitHubError("GitHub rejected the token. Update it in the ReviewHub options.", 401);
+    if (res.status === 403 || res.status === 404) {
+      throw new GitHubError(
+        "GitHub refused the review. The token needs Pull requests: Read and write access to this repository (see the ReviewHub options).",
+        res.status,
+      );
+    }
+    const details = (await res.json().catch(() => ({}))) as { message?: string; errors?: unknown[] };
+    const errors = (details.errors ?? []).map((e) => (typeof e === "string" ? e : JSON.stringify(e))).join("; ");
+    throw new GitHubError(`GitHub didn't accept the review: ${[details.message, errors].filter(Boolean).join(": ") || res.status}`, res.status);
+  }
+
+  return { get, fetchPullRequest, submitReview };
+}
+
+export type ReviewEvent = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
+
+export interface ReviewSubmission {
+  commitId: string;
+  event: ReviewEvent;
+  body: string;
+  comments: { path: string; target: CommentTarget; body: string }[];
 }

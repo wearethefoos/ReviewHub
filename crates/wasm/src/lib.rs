@@ -55,3 +55,26 @@ pub fn report_file_paths() -> Vec<String> {
 pub fn split_diff(diff: &str) -> String {
     json!(reviewhub_core::diff::split_unified_diff(diff)).to_string()
 }
+
+/// The review comment target for one diff line (`DiffLine` → `CommentTarget`).
+#[wasm_bindgen(js_name = lineTarget)]
+pub fn line_target(line: &str) -> Result<String, JsError> {
+    let line: reviewhub_core::diff::DiffLine = parse(line, "diff line")?;
+    Ok(json!(reviewhub_core::review::line_target(&line)).to_string())
+}
+
+/// A draft review comment for a security finding on its file's hunks, or `null`.
+#[wasm_bindgen(js_name = findingComment)]
+pub fn finding_comment(finding: &str, hunks: &str) -> Result<String, JsError> {
+    let finding: reviewhub_core::model::SecurityFinding = parse(finding, "security finding")?;
+    let hunks: Vec<reviewhub_core::diff::Hunk> = parse(hunks, "hunks")?;
+    Ok(json!(reviewhub_core::review::finding_comment(&finding, &hunks)).to_string())
+}
+
+/// A draft review comment for an annotation on a file's hunks, or `null`.
+#[wasm_bindgen(js_name = annotationComment)]
+pub fn annotation_comment(path: &str, annotation: &str, hunks: &str) -> Result<String, JsError> {
+    let annotation: reviewhub_core::focus::Annotation = parse(annotation, "annotation")?;
+    let hunks: Vec<reviewhub_core::diff::Hunk> = parse(hunks, "hunks")?;
+    Ok(json!(reviewhub_core::review::annotation_comment(path, &annotation, &hunks)).to_string())
+}
