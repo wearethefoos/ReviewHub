@@ -1,38 +1,75 @@
-# ReviewHub
+<p align="center">
+  <img src="extension/public/icons/128.png" width="88" alt="ReviewHub">
+</p>
 
-Review agent-authored pull requests by what matters, not by line count.
+<h1 align="center">ReviewHub</h1>
 
-Agents produce more code than people can read line by line, and much of it doesn't need reading. ReviewHub puts three reports next to the GitHub diff and shows a reviewer only what needs their judgement:
+<p align="center">
+  <strong>Your agents write the code. Review what matters.</strong>
+</p>
 
-- **The ask:** what the user asked for, summarized by the agent without private details, next to what was delivered.
-- **Deviations:** where the agent did something other than what was asked, and why.
-- **Decisions:** questions the prompt left open, what the agent chose, and alternatives with ready-to-run prompts.
-- **Validation:** what the agent ran to prove the change works, with evidence.
-- **Gaps:** what the agent couldn't validate, and how to close each gap.
-- **Rollout:** what humans or other agents still need to do to ship.
-- **Security:** findings from a separate agent, each with a patch to apply or a prompt to hand to an agent.
-- **Focus ranking:** coverage of the changed lines, complexity, risk signals and the reports above rank every file as *Focus*, *Skim* or *Skip*, so the diff opens on the files that matter and collapses the rest.
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo">Chrome extension</a> ·
+  <a href="https://wearethefoos.github.io/ReviewHub/">Website</a> ·
+  <a href="https://wearethefoos.github.io/ReviewHub/review.html?demo">Live demo</a> ·
+  <a href="#claude-code-plugin">Claude Code plugin</a> ·
+  <a href="#cli-on-its-own">CLI</a>
+</p>
 
-Nothing runs on a server. ReviewHub is a Chrome extension, a static web app on GitHub Pages, a briefing comment on each pull request, and a Claude Code plugin; they all talk to GitHub directly.
+<p align="center">
+  <a href="https://github.com/wearethefoos/ReviewHub/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/wearethefoos/ReviewHub"></a>
+  <a href="https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo"><img alt="Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/eoejgblmpnccaaohifkeajpblaidgnjo?label=chrome%20web%20store"></a>
+  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/github/license/wearethefoos/ReviewHub"></a>
+</p>
 
-## TL;DR
+Coding agents open pull requests faster than anyone can read them, and most of each diff doesn't need a human. **ReviewHub opens an agent's pull request with its own account of the work and an independent check of it**, then ranks every file so you read the few that matter.
 
-Set up a repository: run this in its root, then commit the files it lists. Claude Code then publishes a review manifest with every pull request it opens, and each pull request gets a briefing comment.
+On the demo pull request that means **reading 4 of 12 files closely** (130 of 221 changed lines), with the SQL injection, the missing ownership check and the shared helper the agent quietly changed right at the top.
+
+![The ReviewHub briefing for an agent-authored pull request](docs/screenshot-briefing.png)
+
+## What you get
+
+**🧭 The briefing.** What was asked next to what was delivered, every **deviation** from the request, every **decision** the prompt left open (with the rejected alternatives and a ready-to-run prompt to switch), the checks the agent **actually ran** with their output, and what it **couldn't validate**, with steps to close each gap.
+
+**🎯 Focus, Skim, Skip.** Security findings, deviations, decisions, gaps, test coverage of the changed lines, complexity and sensitive paths add up to a focus score per file. The diff opens on the Focus files and collapses the generated and mechanical ones. The agent can ask for a file to be skipped; only independent signals can confirm it.
+
+![Files ranked into Focus, Skim and Skip, with syntax highlighting, in dark mode](docs/screenshot-dark.png)
+
+**🛡️ An independent security review.** A second agent that never saw the author's conversation reviews the pull request, and every finding comes with a patch or a prompt to fix it. It runs [in CI, in the agent's own session, or on `git push`](#security-reviews), whichever you have set up.
+
+**✍️ Review without leaving.** Comment on a line or drag over several, turn any finding into a review comment with its fix as a one-click GitHub suggestion, and submit **Comment**, **Approve** or **Request changes** in one go. Syntax highlighting and dark mode included.
+
+![A security finding turned into a pending review comment with a suggested change](docs/screenshot-review.png)
+
+**📊 Coverage and complexity from CI.** `reviewhub init` detects Rust, JavaScript/TypeScript and Python test stacks and publishes which changed lines no test runs, and how much more complex each file got. No secrets needed.
+
+**📱 Review from anywhere.** The Chrome extension adds **Open in ReviewHub** to every pull request. The same page runs as a [web app](https://wearethefoos.github.io/ReviewHub/review.html?demo) on your phone, every pull request gets a briefing comment that reads well in the GitHub mobile app, and the Claude Code plugin and CLI bring the briefing to your session and terminal.
+
+**🔒 Nothing hosted, nothing leaked.** Your browser talks to GitHub directly, and your token never leaves your device. Agents summarize prompts instead of quoting them, and any report containing something credential-shaped (GitHub, AWS, Anthropic, OpenAI or Stripe keys, private keys, …) is rejected before it's posted.
+
+**⚖️ No agent grades its own work.** Three reports from three authors: the **review manifest** from the authoring agent, the **security report** from a separate reviewer, and **coverage and complexity** from your CI. ReviewHub only reads reports from people with write access, the pull request's author and logins you trust.
+
+## Get started
+
+**1. Set up a repository** (run in its root, then commit what it lists):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/main/install.sh | sh -s -- init
 ```
 
-Then review pull requests wherever you are:
+From then on, Claude Code publishes a review manifest with every pull request it opens (also in cloud sessions started from your phone), each pull request gets a security review, CI publishes coverage and complexity, and reviewers get a briefing comment.
+
+**2. Review** wherever you are:
 
 | Where | How |
 | --- | --- |
-| Claude Code | `/plugin marketplace add wearethefoos/ReviewHub`, then `/plugin install reviewhub@reviewhub`, then `/reviewhub:review owner/repo#123` |
-| Chrome | Install [ReviewHub from the Chrome Web Store](https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo); see the [extension guide](docs/extension.md) |
-| Phone or any browser | <https://wearethefoos.github.io/ReviewHub/>, or the briefing comment on the pull request |
-| Terminal | `reviewhub review owner/repo#123` (installed by the command above) |
+| Chrome | [Add ReviewHub to Chrome](https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo) and click **Open in ReviewHub** on a pull request ([guide](docs/extension.md)) |
+| Phone or any browser | [The web app](https://wearethefoos.github.io/ReviewHub/review.html), or the briefing comment on the pull request |
+| Claude Code | `/plugin marketplace add wearethefoos/ReviewHub`, `/plugin install reviewhub@reviewhub`, then `/reviewhub:review owner/repo#123` |
+| Terminal | `reviewhub review owner/repo#123`, with `--diff` for the Focus files (installed by the command above) |
 
-![The briefing for the demo pull request](docs/screenshot-briefing.png)
+Want to see it first? Open the [live demo](https://wearethefoos.github.io/ReviewHub/review.html?demo): an agent-authored pull request with every report filled in, no token needed.
 
 ## Install
 
@@ -51,7 +88,7 @@ See [`docs/extension.md`](docs/extension.md) for installing from a release zip i
 ### On your phone
 
 - **The briefing comment.** Repositories set up with `reviewhub init` get a workflow that keeps one ReviewHub comment on every pull request: blockers, deviations, decisions, what wasn't validated and which files to read, with links into the diff. It reads well in the GitHub mobile app.
-- **The web app** at <https://wearethefoos.github.io/ReviewHub/> is the extension's review page as a static site (the briefing comment links to it). Add it to your home screen. Public repositories work without a token; for private ones, add a token in its settings. The token stays in that browser tab unless you choose to remember it.
+- **The web app** at <https://wearethefoos.github.io/ReviewHub/review.html> is the extension's review page as a static site (the briefing comment links to it). Add it to your home screen. Public repositories work without a token; for private ones, add a token in its settings. The token stays in that browser tab unless you choose to remember it.
 - **Claude Code from the Claude app** (cloud sessions) can't install plugins, so `reviewhub init` puts the plugin's skills, subagent and hooks into the repository itself. See [Repository setup](#repository-setup-reviewhub-init).
 
 ### Claude Code plugin

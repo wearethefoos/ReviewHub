@@ -1,5 +1,5 @@
 import { cpSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
@@ -8,7 +8,8 @@ const root = import.meta.dirname;
 
 // Two builds of the same pages:
 // - `vite build` → dist/: the browser extension (public/: manifest, background worker, content script, icons);
-// - `vite build --mode web` → dist-web/: the web app for GitHub Pages (index redirect, web manifest, icons).
+// - `vite build --mode web` → dist-web/: the GitHub Pages site: the landing page (index.html), the web app
+//   (review.html), web manifest, icons and the landing page's screenshots.
 export default defineConfig(({ mode }) => {
   const web = mode === "web";
   return {
@@ -26,6 +27,15 @@ export default defineConfig(({ mode }) => {
         closeBundle() {
           cpSync(resolve(root, "public/icons"), resolve(root, "dist-web/icons"), { recursive: true });
           cpSync(resolve(root, "web/manifest.webmanifest"), resolve(root, "dist-web/manifest.webmanifest"));
+          // Screenshots for the landing page, from the docs.
+          for (const from of [
+            "docs/screenshot-dark.png",
+            "docs/screenshot-review.png",
+            "docs/chrome-web-store/screenshot-1-briefing.png",
+            "docs/chrome-web-store/screenshot-4-security.png",
+          ]) {
+            cpSync(resolve(root, "..", from), resolve(root, "dist-web/img", basename(from)));
+          }
         },
       },
     ],

@@ -2,7 +2,7 @@
 
 The extension opens any GitHub pull request in ReviewHub's review page: the ask, deviations, decisions, validation gaps, security findings and rollout steps, with the diff ranked so you read the files that matter. It talks only to `api.github.com`; nothing else is involved.
 
-It works in Chrome and other Chromium browsers (Edge, Brave, Arc). Not on a computer? The same review page runs as a web app at <https://wearethefoos.github.io/ReviewHub/>.
+It works in Chrome and other Chromium browsers (Edge, Brave, Arc). Not on a computer? The same review page runs as a web app at <https://wearethefoos.github.io/ReviewHub/review.html>.
 
 ## Install
 

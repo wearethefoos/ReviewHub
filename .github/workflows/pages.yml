@@ -1,7 +1,8 @@
 name: Pages
 
-# Publishes the ReviewHub web app (the extension's review page, built for the
-# web) to GitHub Pages. PR briefing comments link to it. One-time setup:
+# Publishes the ReviewHub website (index.html, from extension/src/landing) and
+# the web app (review.html, the extension's review page built for the web) to
+# GitHub Pages. PR briefing comments link to the web app. One-time setup:
 # Settings → Pages → Source: GitHub Actions.
 on:
   push:

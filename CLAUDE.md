@@ -21,6 +21,7 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 - `reviewhub init` compiles in the plugin's skills, subagent, launcher and hook script (`crates/cli/src/init.rs`), renaming `reviewhub:x` to `reviewhub-x`. When you add a cross-reference between plugin files, check the rename list; a test fails on leftovers.
 - The briefing comment (`crates/cli/src/briefing.rs`) is posted by a trusted account, so every piece of report text goes through `esc` (no HTML, no fake report markers, no @mentions).
 - The web app is the extension's review page built with `npm run build:web`; code that touches `chrome.*` must check `isExtension()` from `src/lib/settings.ts`.
+- The Pages site's `index.html` is the project website (`extension/src/landing`); it forwards links with `?pr=`/`?demo` to `review.html`. Its screenshots are copied from `docs/` at build time; retake them when the review page changes visibly.
 - The demo pull request (`fixtures/demo/bundle.json`) is used by the extension, the CLI tests and the docs. Keep it realistic.
 
 <!-- reviewhub:start -->
