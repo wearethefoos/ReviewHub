@@ -26,7 +26,10 @@ Coding agents open pull requests faster than anyone can read them, and most of e
 
 On the demo pull request that means **reading 4 of 12 files closely** (130 of 221 changed lines), with the SQL injection, the missing ownership check and the shared helper the agent quietly changed right at the top.
 
-![The ReviewHub briefing for an agent-authored pull request](docs/screenshot-briefing.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/briefing-full-dark.png">
+  <img alt="The ReviewHub briefing for an agent-authored pull request" src="docs/screenshots/briefing-full-light.png">
+</picture>
 
 ## What you get
 
@@ -34,13 +37,19 @@ On the demo pull request that means **reading 4 of 12 files closely** (130 of 22
 
 **🎯 Focus, Skim, Skip.** Security findings, deviations, decisions, gaps, test coverage of the changed lines, complexity and sensitive paths add up to a focus score per file. The diff opens on the Focus files and collapses the generated and mechanical ones. The agent can ask for a file to be skipped; only independent signals can confirm it.
 
-![Files ranked into Focus, Skim and Skip, with syntax highlighting, in dark mode](docs/screenshot-dark.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/changes-dark.png">
+  <img alt="Files ranked into Focus, Skim and Skip, with syntax highlighting" src="docs/screenshots/changes-light.png">
+</picture>
 
 **🛡️ An independent security review.** A second agent that never saw the author's conversation reviews the pull request, and every finding comes with a patch or a prompt to fix it. It runs [in CI, in the agent's own session, or on `git push`](#security-reviews), whichever you have set up.
 
 **✍️ Review without leaving.** Comment on a line or drag over several, turn any finding into a review comment with its fix as a one-click GitHub suggestion, and submit **Comment**, **Approve** or **Request changes** in one go. Syntax highlighting and dark mode included.
 
-![A security finding turned into a pending review comment with a suggested change](docs/screenshot-review.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/review-dark.png">
+  <img alt="A security finding turned into a pending review comment with a suggested change" src="docs/screenshots/review-light.png">
+</picture>
 
 **📊 Coverage and complexity from CI.** `reviewhub init` detects Rust, JavaScript/TypeScript and Python test stacks and publishes which changed lines no test runs, and how much more complex each file got. No secrets needed.
 

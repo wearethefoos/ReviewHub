@@ -1,5 +1,5 @@
 import { cpSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
@@ -27,15 +27,8 @@ export default defineConfig(({ mode }) => {
         closeBundle() {
           cpSync(resolve(root, "public/icons"), resolve(root, "dist-web/icons"), { recursive: true });
           cpSync(resolve(root, "web/manifest.webmanifest"), resolve(root, "dist-web/manifest.webmanifest"));
-          // Screenshots for the landing page, from the docs.
-          for (const from of [
-            "docs/screenshot-dark.png",
-            "docs/screenshot-review.png",
-            "docs/chrome-web-store/screenshot-1-briefing.png",
-            "docs/chrome-web-store/screenshot-4-security.png",
-          ]) {
-            cpSync(resolve(root, "..", from), resolve(root, "dist-web/img", basename(from)));
-          }
+          // Screenshots for the landing page, in light and dark versions, from the docs.
+          cpSync(resolve(root, "../docs/screenshots"), resolve(root, "dist-web/img"), { recursive: true });
         },
       },
     ],

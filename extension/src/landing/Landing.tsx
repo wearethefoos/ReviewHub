@@ -37,7 +37,8 @@ function Button({ href, children, primary }: { href: string; children: ReactNode
   );
 }
 
-function Shot({ src, alt, className }: { src: string; alt: string; className?: string }) {
+/** A screenshot in the page's colour scheme: `img/<name>-light.png` or `img/<name>-dark.png`. */
+function Shot({ name, alt, className }: { name: string; alt: string; className?: string }) {
   return (
     <div className={"overflow-hidden rounded-xl border border-border bg-canvas shadow-[0_8px_30px_rgba(0,0,0,0.12)] " + (className ?? "")}>
       <div className="flex items-center gap-1.5 border-b border-border bg-canvas-subtle px-3 py-2">
@@ -45,7 +46,10 @@ function Shot({ src, alt, className }: { src: string; alt: string; className?: s
         <span className="size-2.5 rounded-full bg-border" />
         <span className="size-2.5 rounded-full bg-border" />
       </div>
-      <img src={src} alt={alt} className="block w-full" loading="lazy" />
+      <picture>
+        <source srcSet={`img/${name}-dark.png`} media="(prefers-color-scheme: dark)" />
+        <img src={`img/${name}-light.png`} alt={alt} width={1280} height={800} className="block h-auto w-full" loading="lazy" />
+      </picture>
     </div>
   );
 }
@@ -68,7 +72,7 @@ function Spotlight({ eyebrow, title, children, image, alt, flip }: { eyebrow: st
         <h2 className="mt-2 text-2xl font-semibold leading-tight md:text-3xl">{title}</h2>
         <div className="mt-4 space-y-3 text-[16px] leading-relaxed text-fg-muted">{children}</div>
       </div>
-      <Shot src={image} alt={alt} className={flip ? "lg:order-1" : ""} />
+      <Shot name={image} alt={alt} className={flip ? "lg:order-1" : ""} />
     </div>
   );
 }
@@ -133,7 +137,7 @@ export function Landing() {
                 <MarkGithubIcon size={16} /> GitHub
               </Button>
             </div>
-            <Shot src="img/screenshot-1-briefing.png" alt="The ReviewHub briefing for an agent-authored pull request" className="mx-auto mt-14 max-w-5xl text-left" />
+            <Shot name="briefing" alt="The ReviewHub briefing for an agent-authored pull request" className="mx-auto mt-14 max-w-5xl text-left" />
           </div>
         </section>
 
@@ -156,8 +160,8 @@ export function Landing() {
           <Spotlight
             eyebrow="Focus ranking"
             title="Read the 4 files that matter. Skim the rest."
-            image="img/screenshot-dark.png"
-            alt="The Changes tab, with files grouped into Focus, Skim and Skip, in dark mode"
+            image="changes"
+            alt="The Changes tab, with files grouped into Focus, Skim and Skip"
           >
             <p>
               Every changed file gets a focus score from security findings, the agent&apos;s deviations and decisions, validation gaps, test coverage of the
@@ -171,7 +175,7 @@ export function Landing() {
             flip
             eyebrow="Independent security review"
             title="A second agent that didn't write the code checks it."
-            image="img/screenshot-4-security.png"
+            image="security"
             alt="Security findings, each with a suggested fix as a patch"
           >
             <p>
@@ -187,7 +191,7 @@ export function Landing() {
           <Spotlight
             eyebrow="Review without leaving"
             title="Turn findings into GitHub comments in one click."
-            image="img/screenshot-review.png"
+            image="review"
             alt="A security finding turned into a pending review comment with a suggested change"
           >
             <p>
