@@ -1,8 +1,16 @@
 #!/bin/sh
 # ReviewHub SessionStart hook (installed by `reviewhub init`; re-run it to update).
 # Puts the pinned ReviewHub CLI on PATH for this Claude Code session, locally or
-# in the cloud, and downloads it ahead of first use.
-dir="$(cd "$(dirname "$0")" && pwd)/bin"
+# in the cloud, and downloads it ahead of first use. In repositories that use the
+# pre-push hook, installs it in this clone (cloud sessions start from a fresh one).
+here="$(cd "$(dirname "$0")" && pwd)"
+dir="$here/bin"
+if [ -f "$here/git-pre-push" ] && hooks="$(git rev-parse --path-format=absolute --git-path hooks 2>/dev/null)"; then
+  hook="$hooks/pre-push"
+  if [ ! -e "$hook" ] || grep -q '^# reviewhub:' "$hook" 2>/dev/null; then
+    mkdir -p "$hooks" && cp "$here/git-pre-push" "$hook" && chmod +x "$hook"
+  fi
+fi
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   echo "export PATH=\"$dir:\$PATH\"" >>"$CLAUDE_ENV_FILE"
 fi

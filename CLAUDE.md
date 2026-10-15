@@ -26,5 +26,5 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 <!-- reviewhub:start -->
 ## ReviewHub
 
-Pull requests in this repository are reviewed with ReviewHub. Publish a review manifest with every pull request you open or update (reviewhub-manifest skill). The `reviewhub` CLI (v0.4.0) is on PATH in Claude Code sessions; elsewhere run `.claude/reviewhub/bin/reviewhub`. To update these files, run `reviewhub init` with a newer CLI.
+Pull requests in this repository are reviewed with ReviewHub. Publish a review manifest with every pull request you open or update (reviewhub-manifest skill). The `reviewhub` CLI (v0.5.0) is on PATH in Claude Code sessions; elsewhere run `.claude/reviewhub/bin/reviewhub`. To update these files, run `reviewhub init` with a newer CLI.
 <!-- reviewhub:end -->

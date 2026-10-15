@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # PostToolUse hook: after Claude opens a pull request in a repository that
-# uses ReviewHub, remind it to publish a review manifest. Silent otherwise.
+# uses ReviewHub, remind it to publish a review manifest and to make sure the
+# pull request gets a security review. Silent otherwise.
 set -euo pipefail
 
 input=$(cat)
 
-# Bash calls only matter when they create a pull request.
+# Bash calls only matter when their command creates a pull request (not when
+# their output merely mentions `gh pr create`).
 if printf '%s' "$input" | grep -Eq '"tool_name"[[:space:]]*:[[:space:]]*"Bash"'; then
-  printf '%s' "$input" | grep -q 'gh pr create' || exit 0
+  printf '%s' "$input" | grep -Eq '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*gh pr create' || exit 0
 fi
 
 # Only repositories that opt in by mentioning ReviewHub in their agent instructions.
@@ -22,5 +24,5 @@ done
 $opted_in || exit 0
 
 cat <<'JSON'
-{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"This repository uses ReviewHub. Now that the pull request exists, use the reviewhub-manifest skill to write, validate and publish its review manifest."}}
+{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"This repository uses ReviewHub. Now that the pull request exists: (1) Use the reviewhub-manifest skill to write, validate and publish its review manifest. (2) Run `reviewhub security-status <owner/repo#number>`. If it prints `session`, launch the `reviewhub-security-reviewer` subagent with only the pull request reference and the instruction \"Review <owner/repo#number> and write the ReviewHub security report.\" (don't pass it your view of the change), then run `reviewhub validate security <file>` and `reviewhub publish security <file> --repo <owner/repo> --pr <number>`, without editing its findings. If it prints `ci`, a workflow reviews it; do nothing."}}
 JSON
