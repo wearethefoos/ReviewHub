@@ -17,7 +17,7 @@ Store item `eoejgblmpnccaaohifkeajpblaidgnjo`: <https://chromewebstore.google.co
 ```
 Coding agents write more code than people can read line by line, and much of it doesn't need reading. ReviewHub opens a GitHub pull request in a review page that shows what needs your judgement first.
 
-• The ask: the original prompt and follow-ups, next to what the agent delivered.
+• The ask: what was asked for, summarized by the agent, next to what it delivered.
 • Deviations: where the agent did something other than what was asked, and why.
 • Decisions: questions the prompt left open, what the agent chose, and the alternatives, each with a prompt you can hand to an agent.
 • Verification: what the agent ran to prove the change works, with evidence, and what it couldn't validate.

@@ -46,7 +46,7 @@ The header shows the pull request, its state and **View on GitHub**. Below it ar
 
 | Tab | What it shows |
 | --- | --- |
-| **Briefing** | Start here. What was asked (the original prompt and follow-ups) next to what the agent delivered; where to spend your review (how many files and lines to read closely, and the files to start with); what needs your judgement (security findings, deviations, decisions, what wasn't validated); validation results and coverage; blocking rollout steps. |
+| **Briefing** | Start here. What was asked (the agent's summary of the request and later changes to it) next to what the agent delivered; where to spend your review (how many files and lines to read closely, and the files to start with); what needs your judgement (security findings, deviations, decisions, what wasn't validated); validation results and coverage; blocking rollout steps. |
 | **Changes** | The diff, grouped by review tier: **Focus** (read these line by line), **Skim** (check the shape, not every line) and **Skip** (generated, mechanical or low risk, collapsed). Security findings, deviations, decisions, gaps and uncovered lines appear inline, with a link to their details. |
 | **Decisions** | Where the agent did something other than what was asked, and the questions the prompt left open with the alternatives it rejected. **Copy prompt to switch** gives you a prompt to hand an agent if you prefer an alternative. |
 | **Verification** | The checks the agent ran, with commands and evidence (failures first); what it could not validate, with steps to close each gap; coverage and complexity of the changed files. |
