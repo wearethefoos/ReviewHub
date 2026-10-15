@@ -112,14 +112,21 @@ fn validator(kind: Kind) -> &'static jsonschema::Validator {
 }
 
 /// Validates `json` against the schema for `kind`, then deserializes it with defaults applied.
+/// Reports are published as pull request comments, so text that looks like a credential is an
+/// error too.
 pub fn validate(kind: Kind, json: &Value) -> Result<Report, String> {
-    let errors: Vec<String> = validator(kind)
+    let mut errors: Vec<String> = validator(kind)
         .iter_errors(json)
         .map(|e| {
             let path = e.instance_path().to_string();
             if path.is_empty() { format!("✖ {e}") } else { format!("✖ {e}\n  → at {path}") }
         })
         .collect();
+    errors.extend(
+        crate::secrets::find(json).into_iter().map(|f| {
+            format!("✖ looks like a {}; reports are public, so remove or redact it\n  → at {}", f.kind, f.path)
+        }),
+    );
     if !errors.is_empty() {
         return Err(errors.join("\n"));
     }
@@ -224,6 +231,15 @@ mod tests {
         let Report::Manifest(m) = validate(Kind::Manifest, &m).unwrap() else { panic!() };
         assert_eq!(m.gaps[0].owner, crate::model::Owner::Human);
         assert!(m.decisions.is_empty());
+    }
+
+    #[test]
+    fn rejects_credentials() {
+        let token = format!("github_pat_{}", "x".repeat(30));
+        let m = json!({ "version": "1", "agent": { "name": "a" }, "prompt": { "original": format!("push with {token}") }, "summary": "" });
+        let err = validate(Kind::Manifest, &m).unwrap_err();
+        assert!(err.contains("looks like a GitHub token") && err.contains("/prompt/original"), "{err}");
+        assert!(!err.contains(&token), "the error must not repeat the secret");
     }
 }
 

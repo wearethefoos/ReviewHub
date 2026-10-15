@@ -195,10 +195,14 @@ pub struct Agent {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, optional_fields))]
 #[serde(rename_all = "camelCase")]
 pub struct Prompt {
-    /// The user's request, verbatim.
+    /// The user's request, rephrased for reviewers: its goal, scope and constraints, in the
+    /// user's terms where possible. Not a verbatim copy: prompts can hold private data, and the
+    /// manifest is public on the pull request. Leave out credentials, personal data, customer
+    /// details, internal hostnames and anything else the user wouldn't post on the pull request.
     #[schemars(length(min = 1))]
     pub original: String,
-    /// Later user messages that changed the scope, verbatim.
+    /// Later user messages that changed the scope, summarized the same way. Leave out messages
+    /// that only steered the session ("open the PR", "looks good").
     #[serde(default)]
     pub follow_ups: Vec<String>,
     /// Link to the issue or conversation the prompt came from.

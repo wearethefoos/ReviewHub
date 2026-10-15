@@ -10,6 +10,8 @@ ReviewHub builds its view of a pull request from the GitHub diff plus three JSON
 
 All reports are optional. Without them ReviewHub still ranks files using path heuristics, but the briefing is mostly empty.
 
+Reports are public on the pull request. Write them without private data: the manifest describes the user's request rather than quoting it, and validation rejects any report containing text that looks like a credential (GitHub, AWS, Anthropic, OpenAI, Google, Slack, Stripe and npm tokens, JSON Web Tokens and private keys), wherever ReviewHub reads or publishes it.
+
 JSON Schemas live in [`schemas/`](../schemas), and `reviewhub schema <kind>` prints them. They are generated from the Rust types in [`crates/core/src/model.rs`](../crates/core/src/model.rs), which the CLI and the browser extension (through WebAssembly) both use, so both accept exactly the same reports.
 
 ## Publishing a report
@@ -61,7 +63,7 @@ ReviewHub falls back to `.reviewhub/manifest.json`, `.reviewhub/security.json` a
 | Field        | Purpose                                                                                                                          |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | `agent`      | Name, model and a link to the agent session.                                                                                     |
-| `prompt`     | The user's request **verbatim**, plus follow-up messages that changed the scope.                                                  |
+| `prompt`     | The user's request **rephrased** for reviewers (goal, scope, constraints), plus later requests that changed the scope. Never verbatim: no credentials, personal or other private data. |
 | `summary`    | What was delivered, in a few sentences.                                                                                          |
 | `deviations` | Each place the delivery differs from the request: `requested`, `delivered`, `reason`, `severity` (`minor`/`major`).              |
 | `decisions`  | Questions the prompt left open: `context`, `chosen`, `rationale`, `impact` (`low`/`medium`/`high`) and `alternatives`. Give an alternative a `prompt` when switching to it is realistic. |

@@ -101,7 +101,8 @@ export function Briefing({ bundle, focus }: { bundle: PullRequestBundle; focus: 
             </div>
             <Box className="min-w-0 flex-1">
               <BoxHeader>
-                <span className="font-semibold">Original prompt</span>
+                <span className="font-semibold">The request</span>
+                <span className="text-xs text-fg-muted">as summarized by {manifest.agent.name}</span>
                 {manifest.prompt.source && (
                   <a href={manifest.prompt.source} className="ml-auto text-xs hover:underline">
                     Source

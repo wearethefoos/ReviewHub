@@ -9,3 +9,4 @@ pub mod github;
 pub mod lcov;
 pub mod model;
 pub mod reports;
+pub mod secrets;
