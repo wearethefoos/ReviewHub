@@ -4,7 +4,7 @@ What to fill in on the [Chrome Web Store Developer Dashboard](https://chrome.goo
 
 ## Package
 
-Upload `reviewhub-extension-vX.Y.Z.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest). Later versions are uploaded by the release workflow.
+Store item `eoejgblmpnccaaohifkeajpblaidgnjo`: <https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo>. The first version was uploaded by hand from the [releases](https://github.com/wearethefoos/ReviewHub/releases); later versions are uploaded by the release workflow.
 
 ## Store listing
 

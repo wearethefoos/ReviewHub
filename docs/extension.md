@@ -6,17 +6,20 @@ It works in Chrome and other Chromium browsers (Edge, Brave, Arc). Not on a comp
 
 ## Install
 
-1. Download `reviewhub-extension-vX.Y.Z.zip` from the [latest release](https://github.com/wearethefoos/ReviewHub/releases/latest).
+Install [ReviewHub from the Chrome Web Store](https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo) and click **Add to Chrome**. Optionally pin it from the puzzle-piece menu so its toolbar button is always visible.
+
+The extension asks for access to `github.com` (to add the **Open in ReviewHub** button to pull requests) and `api.github.com` (to read pull requests and reports). It updates itself when a new version is released.
+
+### Without the Chrome Web Store
+
+To run a specific version, or a build that isn't in the store yet:
+
+1. Download `reviewhub-extension-vX.Y.Z.zip` from the [releases](https://github.com/wearethefoos/ReviewHub/releases).
 2. Unzip it into a folder you'll keep: Chrome loads the extension from that folder, so don't delete it afterwards.
 3. Open `chrome://extensions` (in Edge: `edge://extensions`) and turn on **Developer mode** (top right).
 4. Click **Load unpacked** and choose the unzipped folder (the one containing `manifest.json`).
-5. Optional: pin ReviewHub from the puzzle-piece menu so its toolbar button is always visible.
 
-The extension asks for access to `github.com` (to add the **Open in ReviewHub** button to pull requests) and `api.github.com` (to read pull requests and reports).
-
-### Update
-
-Extensions loaded this way don't update themselves. When a new release is out, download its zip, unzip it over the same folder (replacing the files), and click the reload icon on the ReviewHub card in `chrome://extensions`. Keep using the same folder: Chrome identifies an unpacked extension by its folder, so loading a different one installs a separate copy without your settings.
+Extensions loaded this way don't update themselves: to update, unzip the new release over the same folder and click the reload icon on the ReviewHub card. Chrome identifies an unpacked extension by its folder, so loading a different folder installs a separate copy without your settings. Remove an unpacked copy before installing from the store, or you'll have two **Open in ReviewHub** buttons.
 
 ## Set up a token (optional)
 

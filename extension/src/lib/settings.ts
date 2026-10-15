@@ -64,4 +64,4 @@ export function openSettings(event?: { preventDefault(): void }) {
   // In the web app the link's own href (options.html) navigates there.
 }
 
-export const EXTENSION_URL = "https://github.com/wearethefoos/ReviewHub/releases/latest";
+export const EXTENSION_URL = "https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo";

@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 /// Starts every briefing comment. Distinct from the report markers, so a briefing is never read as a report.
 pub const MARKER: &str = "<!-- reviewhub:briefing -->";
 pub const DEFAULT_WEB_URL: &str = "https://wearethefoos.github.io/ReviewHub/";
-pub const EXTENSION_URL: &str = "https://github.com/wearethefoos/ReviewHub/releases/latest";
+pub const EXTENSION_URL: &str = "https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo";
 
 /// Report text is untrusted, and the briefing is posted by a trusted account.
 /// Escape anything that could inject HTML (or a fake report marker), ping
