@@ -12,6 +12,13 @@
   --border-muted: #d1d9e0b3;
   --header: #1f2328;
   --header-fg: #ffffff;
+  --syntax-comment: #59636e;
+  --syntax-keyword: #cf222e;
+  --syntax-entity: #6639ba;
+  --syntax-constant: #0550ae;
+  --syntax-string: #0a3069;
+  --syntax-variable: #953800;
+  --syntax-tag: #116329;
   --accent: #0969da;
   --accent-emphasis: #0969da;
   --accent-subtle: #ddf4ff;
@@ -53,6 +60,13 @@
     --border-muted: #3d444db3;
     --header: #010409;
     --header-fg: #f0f6fc;
+    --syntax-comment: #9198a1;
+    --syntax-keyword: #ff7b72;
+    --syntax-entity: #d2a8ff;
+    --syntax-constant: #79c0ff;
+    --syntax-string: #a5d6ff;
+    --syntax-variable: #ffa657;
+    --syntax-tag: #7ee787;
     --accent: #4493f8;
     --accent-emphasis: #1f6feb;
     --accent-subtle: #388bfd1a;
@@ -207,4 +221,65 @@ details[open] > summary .chevron {
 
 :target {
   scroll-margin-top: 72px;
+}
+
+/* Syntax highlighting (highlight.js classes), in GitHub's colours. */
+.hljs-doctag,
+.hljs-keyword,
+.hljs-meta .hljs-keyword,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-variable.language_ {
+  color: var(--syntax-keyword);
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-title.function_ {
+  color: var(--syntax-entity);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-literal,
+.hljs-meta,
+.hljs-number,
+.hljs-operator,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-section {
+  color: var(--syntax-constant);
+}
+.hljs-regexp,
+.hljs-string,
+.hljs-meta .hljs-string {
+  color: var(--syntax-string);
+}
+.hljs-built_in,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--syntax-variable);
+}
+.hljs-comment,
+.hljs-code,
+.hljs-formula {
+  color: var(--syntax-comment);
+}
+.hljs-name,
+.hljs-quote,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  color: var(--syntax-tag);
+}
+.hljs-subst {
+  color: var(--fg);
+}
+.hljs-section,
+.hljs-strong {
+  font-weight: 600;
+}
+.hljs-emphasis {
+  font-style: italic;
 }

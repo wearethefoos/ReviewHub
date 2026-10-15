@@ -79,16 +79,24 @@ export function DraftCard({ draft }: { draft: Draft }) {
   );
 }
 
-/** The "+" in a diff line's gutter. */
-export function AddLineComment({ path, target }: { path: string; target: CommentTarget }) {
-  const drafts = useDrafts();
-  if (!drafts) return null;
+/** The "+" in a diff line's gutter: click to comment on the line, drag or shift-click to select several. */
+export function AddLineComment({ onStart }: { onStart: (event: { shiftKey: boolean }) => void }) {
   return (
     <button
       type="button"
-      title="Comment on this line"
+      title="Comment on this line (drag, or shift-click another line, to select several)"
       aria-label="Comment on this line"
-      onClick={() => drafts.compose({ path, target, body: "" })}
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        onStart(e);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onStart(e);
+        }
+      }}
       className="absolute left-0 top-0 hidden size-5 items-center justify-center rounded bg-accent-emphasis text-white group-hover/row:flex focus:flex"
     >
       <PlusIcon size={12} />

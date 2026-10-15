@@ -26,9 +26,12 @@ pub enum Side {
 pub struct CommentTarget {
     pub line: u32,
     pub side: Side,
-    /// First line of a multi-line comment, on the same side.
+    /// First line of a multi-line comment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_line: Option<u32>,
+    /// Side of `start_line` when it differs from `side` (a range from a deleted line to an added one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_side: Option<Side>,
 }
 
 /// A review comment for the reviewer to edit before submitting.
@@ -43,9 +46,27 @@ pub struct DraftComment {
 /// The target for a comment on one line of the diff.
 pub fn line_target(line: &DiffLine) -> CommentTarget {
     match line.new_line {
-        Some(n) => CommentTarget { line: n, side: Side::Right, start_line: None },
-        None => CommentTarget { line: line.old_line.unwrap_or(1), side: Side::Left, start_line: None },
+        Some(n) => CommentTarget { line: n, side: Side::Right, start_line: None, start_side: None },
+        None => {
+            CommentTarget { line: line.old_line.unwrap_or(1), side: Side::Left, start_line: None, start_side: None }
+        }
     }
+}
+
+/// The target for the rows `from..=to` of a hunk (in either order), as a reviewer selects them on the diff.
+/// `None` when an index is out of range.
+pub fn selection_target(hunk: &Hunk, from: usize, to: usize) -> Option<CommentTarget> {
+    let (first, last) = (from.min(to), from.max(to));
+    let end = line_target(hunk.lines.get(last)?);
+    if first == last {
+        return Some(end);
+    }
+    let start = line_target(hunk.lines.get(first)?);
+    Some(CommentTarget {
+        start_line: Some(start.line),
+        start_side: (start.side != end.side).then_some(start.side),
+        ..end
+    })
 }
 
 /// The target covering as much of the new-file lines `start..=end` as the diff
@@ -57,7 +78,12 @@ pub fn range_target(hunks: &[Hunk], start: u32, end: u32) -> Option<CommentTarge
     let hunk = hunks.iter().rev().find(|h| h.lines.iter().any(|l| in_range(l).is_some()))?;
     let visible: Vec<u32> = hunk.lines.iter().filter_map(in_range).collect();
     let (first, last) = (*visible.first()?, *visible.last()?);
-    Some(CommentTarget { line: last, side: Side::Right, start_line: (first != last).then_some(first) })
+    Some(CommentTarget {
+        line: last,
+        side: Side::Right,
+        start_line: (first != last).then_some(first),
+        start_side: None,
+    })
 }
 
 /// A fix that GitHub can show as a suggested change: replace the target lines with `replacement`.
@@ -106,7 +132,12 @@ pub fn suggested_change(pr_hunks: &[Hunk], path: &str, fix_diff: &str) -> Option
     let replacement =
         kept.iter().filter(|l| l.kind != LineType::Del).map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
     Some(SuggestedChange {
-        target: CommentTarget { line: end, side: Side::Right, start_line: (start != end).then_some(start) },
+        target: CommentTarget {
+            line: end,
+            side: Side::Right,
+            start_line: (start != end).then_some(start),
+            start_side: None,
+        },
         replacement,
     })
 }
@@ -212,23 +243,45 @@ mod tests {
         let hunks = pr_hunks();
         assert_eq!(
             range_target(&hunks, 11, 12),
-            Some(CommentTarget { line: 12, side: Side::Right, start_line: Some(11) })
+            Some(CommentTarget { line: 12, side: Side::Right, start_line: Some(11), start_side: None })
         );
         assert_eq!(
             range_target(&hunks, 12, 20),
-            Some(CommentTarget { line: 13, side: Side::Right, start_line: Some(12) })
+            Some(CommentTarget { line: 13, side: Side::Right, start_line: Some(12), start_side: None })
         );
         assert_eq!(range_target(&hunks, 11, 11).unwrap().start_line, None);
         assert_eq!(range_target(&hunks, 30, 40), None);
         let deleted = parse_patch(Some("@@ -5,1 +5,0 @@\n-gone"));
-        assert_eq!(line_target(&deleted[0].lines[0]), CommentTarget { line: 5, side: Side::Left, start_line: None });
+        assert_eq!(
+            line_target(&deleted[0].lines[0]),
+            CommentTarget { line: 5, side: Side::Left, start_line: None, start_side: None }
+        );
+    }
+
+    #[test]
+    fn targets_selected_rows() {
+        // old 5 deleted, new 5-6 added, then line 6/7 unchanged.
+        let hunk = &parse_patch(Some("@@ -5,2 +5,3 @@\n-old\n+new\n+more\n same"))[0];
+        assert_eq!(
+            selection_target(hunk, 1, 1),
+            Some(CommentTarget { line: 5, side: Side::Right, start_line: None, start_side: None })
+        );
+        assert_eq!(
+            selection_target(hunk, 3, 1),
+            Some(CommentTarget { line: 7, side: Side::Right, start_line: Some(5), start_side: None })
+        );
+        assert_eq!(
+            selection_target(hunk, 0, 2),
+            Some(CommentTarget { line: 6, side: Side::Right, start_line: Some(5), start_side: Some(Side::Left) })
+        );
+        assert_eq!(selection_target(hunk, 0, 9), None);
     }
 
     #[test]
     fn makes_suggestions_from_single_hunk_fixes() {
         let fix = "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -10,3 +10,3 @@\n a\n-query(`${id}`)\n+query('?', [id])\n log(id)";
         let s = suggested_change(&pr_hunks(), "src/a.ts", fix).unwrap();
-        assert_eq!(s.target, CommentTarget { line: 11, side: Side::Right, start_line: None });
+        assert_eq!(s.target, CommentTarget { line: 11, side: Side::Right, start_line: None, start_side: None });
         assert_eq!(s.replacement, "query('?', [id])");
 
         // A pure insertion keeps the line before it as the anchor.

@@ -112,7 +112,7 @@ export function Security({ pr, report, error }: { pr: PullRequestInfo; report?: 
                       {patches.map((p, i) => (
                         <div key={i}>
                           <p className="mb-1 font-mono text-xs text-fg-muted">{p.path}</p>
-                          <PatchView hunks={p.hunks} />
+                          <PatchView hunks={p.hunks} path={p.path} />
                         </div>
                       ))}
                     </div>

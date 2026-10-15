@@ -8,6 +8,10 @@ import type { Side } from "./Side";
  */
 export type CommentTarget = { line: number, side: Side, 
 /**
- * First line of a multi-line comment, on the same side.
+ * First line of a multi-line comment.
  */
-startLine?: number, };
+startLine?: number, 
+/**
+ * Side of `start_line` when it differs from `side` (a range from a deleted line to an added one).
+ */
+startSide?: Side, };
