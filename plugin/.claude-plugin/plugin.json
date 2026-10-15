@@ -1,7 +1,7 @@
 {
   "name": "reviewhub",
   "displayName": "ReviewHub",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Publish review manifests with your pull requests, run an independent security review, and review agent-authored PRs by what matters.",
   "author": {
     "name": "wearethefoos",
