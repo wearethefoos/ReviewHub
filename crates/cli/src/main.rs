@@ -4,6 +4,7 @@
 mod briefing;
 mod github;
 mod init;
+mod push;
 mod render;
 
 use std::io::Read as _;
@@ -90,6 +91,13 @@ Commit the result. Run it again with a newer CLI to update."
         /// Don't add the workflows (.github/workflows/reviewhub.yml and reviewhub-security.yml)
         #[arg(long)]
         no_workflow: bool,
+        /// Install the git pre-push hook that gets pushes from agent sessions security-reviewed
+        /// [default: ask on a terminal; kept once installed]
+        #[arg(long, conflicts_with = "no_pre_push")]
+        pre_push: bool,
+        /// Don't install the git pre-push hook, and remove ReviewHub's
+        #[arg(long)]
+        no_pre_push: bool,
         /// Only report whether the files are up to date; exit with 1 if not
         #[arg(long)]
         check: bool,
@@ -107,6 +115,25 @@ Uses GITHUB_TOKEN, or the token from `gh auth login`."
         #[arg(long, default_value_t = 60)]
         wait: u64,
     },
+    /// Run a headless Claude Code security review of a pull request and publish it
+    #[command(
+        after_help = "Skips the review when the pull request already has a security report for its head commit, or \
+when the ReviewHub security review workflow reviews it (unless --force). Needs Claude Code (`claude`) and GITHUB_TOKEN or \
+`gh auth login`. Run it from a checkout of the repository."
+    )]
+    SecurityReview {
+        /// owner/repo#123 or a pull request URL
+        pr: String,
+        /// Wait until the pull request's head is this commit (after a push) before reviewing
+        #[arg(long, value_name = "SHA")]
+        sha: Option<String>,
+        /// Review even if CI does or a report for the head commit exists
+        #[arg(long)]
+        force: bool,
+    },
+    /// The git pre-push hook installed by `reviewhub init` (reads git's pre-push input on stdin)
+    #[command(hide = true)]
+    PrePush { remote: Option<String>, url: Option<String> },
     /// Check a report against its schema
     Validate {
         #[arg(value_parser = parse_kind, value_name = "manifest|security|metrics")]
@@ -253,12 +280,14 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Cmd::Init { dir, no_workflow, check } => {
+        Cmd::Init { dir, no_workflow, pre_push, no_pre_push, check } => {
             let root = match dir {
                 Some(dir) => dir,
                 None => git_root().unwrap_or(std::env::current_dir()?),
             };
-            let outcome = init::run(&root, !no_workflow, check)?;
+            let installed = init::pre_push_installed(&root);
+            let pre_push = !no_pre_push && (pre_push || installed || (!check && push::ask_install()));
+            let outcome = init::run(&root, init::Options { workflow: !no_workflow, pre_push }, check)?;
             for (path, change) in &outcome.changes {
                 let label = match change {
                     init::Change::Created if check => "missing",
@@ -272,8 +301,20 @@ fn run(cli: Cli) -> Result<()> {
             if check && outcome.changed() {
                 bail!("ReviewHub files are not up to date with this CLI (v{}); run `reviewhub init`", init::VERSION);
             }
+            if !check {
+                match init::install_git_hook(&root, pre_push) {
+                    Ok(Some(note)) => println!("{note}"),
+                    Ok(None) => {}
+                    Err(e) => eprintln!("warning: {e:#}"),
+                }
+            }
             if !check && outcome.changed() {
                 println!("\nReviewHub v{} is set up in {}. Commit these files.", init::VERSION, root.display());
+                if !pre_push {
+                    println!(
+                        "Tip: `reviewhub init --pre-push` adds a git hook that gets pushes from agent sessions security-reviewed."
+                    );
+                }
             }
         }
         Cmd::Validate { kind, file } => {
@@ -321,6 +362,20 @@ fn run(cli: Cli) -> Result<()> {
             let Some((owner, name)) = repo.split_once('/') else { bail!("--repo must be owner/repo") };
             let url = GitHub::new(github::resolve_token()).publish(kind, &report, owner, name, pr)?;
             println!("{url}");
+            // Remember the agent's branch for the pre-push hook, and get the pull request security-reviewed.
+            if kind == Kind::Manifest
+                && push::save_manifest(&repo, pr, &report.to_value()).is_some()
+                && init::pre_push_installed_here()
+                && let Some(message) = push::request_review(&repo, pr, None)
+            {
+                println!("{message}");
+            }
+        }
+        Cmd::SecurityReview { pr, sha, force } => push::security_review(&pr, sha.as_deref(), force)?,
+        Cmd::PrePush { url, .. } => {
+            let mut input = String::new();
+            let _ = std::io::stdin().read_to_string(&mut input);
+            push::pre_push(url.as_deref().unwrap_or(""), &input);
         }
     }
     Ok(())

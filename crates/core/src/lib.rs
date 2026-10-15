@@ -6,6 +6,7 @@ pub mod ci;
 pub mod classify;
 pub mod diff;
 pub mod focus;
+pub mod git;
 pub mod github;
 pub mod lcov;
 pub mod model;

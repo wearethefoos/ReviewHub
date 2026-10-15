@@ -1,0 +1,7 @@
+#!/bin/sh
+# reviewhub: runs the repository's ReviewHub pre-push hook. Delete this file to turn it off.
+script="$(git rev-parse --show-toplevel)/.claude/reviewhub/pre-push.sh"
+if [ -x "$script" ]; then
+  exec "$script" "$@"
+fi
+exit 0

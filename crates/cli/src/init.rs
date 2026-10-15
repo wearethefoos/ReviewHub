@@ -3,7 +3,7 @@
 //! from the mobile app). Writes the plugin's skills and subagent under
 //! `.claude/`, a launcher pinned to this CLI's version, hooks in
 //! `.claude/settings.json`, an opt-in note in `CLAUDE.md`, and the briefing
-//! and security review workflows. The plugin's files are compiled in, so there is one source.
+//! and security review workflows; optionally a git pre-push hook. The plugin's files are compiled in, so there is one source.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -42,7 +42,19 @@ struct Generated {
     executable: bool,
 }
 
-fn generated(with_workflow: bool) -> Vec<Generated> {
+/// What `reviewhub init` sets up besides the skills, subagent, launcher and Claude Code hooks.
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+    pub workflow: bool,
+    pub pre_push: bool,
+}
+
+const PRE_PUSH: &str = ".claude/reviewhub/pre-push.sh";
+const GIT_PRE_PUSH: &str = ".claude/reviewhub/git-pre-push";
+/// First line after the shebang of the hook ReviewHub installs in `.git/hooks`.
+const GIT_HOOK_MARKER: &str = "# reviewhub:";
+
+fn generated(options: Options) -> Vec<Generated> {
     let file = |path, content: &str, executable| Generated { path, content: content.to_string(), executable };
     let mut files = vec![
         file(
@@ -70,7 +82,11 @@ fn generated(with_workflow: bool) -> Vec<Generated> {
         file(".claude/reviewhub/session-start.sh", include_str!("../templates/session-start.sh"), true),
         file(".claude/reviewhub/pr-created.sh", &rename(include_str!("../../../plugin/scripts/pr-created.sh")), true),
     ];
-    if with_workflow {
+    if options.pre_push {
+        files.push(file(PRE_PUSH, include_str!("../templates/pre-push.sh"), true));
+        files.push(file(GIT_PRE_PUSH, include_str!("../templates/git-pre-push"), true));
+    }
+    if options.workflow {
         files.push(file(
             ".github/workflows/reviewhub.yml",
             &include_str!("../templates/reviewhub.yml").replace("{{VERSION}}", VERSION),
@@ -167,13 +183,79 @@ impl Outcome {
     }
 }
 
+/// Whether the repository at `root` uses ReviewHub's pre-push hook.
+pub fn pre_push_installed(root: &Path) -> bool {
+    root.join(PRE_PUSH).is_file()
+}
+
+/// Whether the repository in the current directory uses ReviewHub's pre-push hook.
+pub fn pre_push_installed_here() -> bool {
+    let out = std::process::Command::new("git").args(["rev-parse", "--show-toplevel"]).output();
+    out.ok()
+        .filter(|o| o.status.success())
+        .is_some_and(|o| pre_push_installed(Path::new(String::from_utf8_lossy(&o.stdout).trim())))
+}
+
+/// Installs (`enable`) or removes ReviewHub's hook in the clone's git hooks directory. Leaves other pre-push hooks
+/// alone. Returns a note for the user.
+pub fn install_git_hook(root: &Path, enable: bool) -> Result<Option<String>> {
+    let out = std::process::Command::new("git")
+        .current_dir(root)
+        .args(["rev-parse", "--path-format=absolute", "--git-path", "hooks"])
+        .output()
+        .context("running git")?;
+    if !out.status.success() {
+        return Ok(enable.then(|| "Not a git repository, so the pre-push hook wasn't installed.".to_string()));
+    }
+    let hooks = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    let hook = hooks.join("pre-push");
+    let current = fs::read_to_string(&hook).ok();
+    let ours = current.as_deref().is_some_and(|c| c.lines().nth(1).is_some_and(|l| l.starts_with(GIT_HOOK_MARKER)));
+    if !enable {
+        if ours {
+            fs::remove_file(&hook)?;
+            return Ok(Some(format!("removed  {}", hook.display())));
+        }
+        return Ok(None);
+    }
+    let content = include_str!("../templates/git-pre-push");
+    if current.as_deref() == Some(content) {
+        return Ok(None);
+    }
+    if current.is_some() && !ours {
+        return Ok(Some(format!(
+            "{} already exists, so ReviewHub's pre-push hook wasn't installed. Add this line to it:\n  \
+             \"$(git rev-parse --show-toplevel)/{PRE_PUSH}\" \"$@\"",
+            hook.display()
+        )));
+    }
+    fs::create_dir_all(&hooks)?;
+    fs::write(&hook, content)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(Some(format!(
+        "{:>10}  {} (git hook, not committed; Claude Code sessions install it too)",
+        "installed",
+        hook.display()
+    )))
+}
+
 /// Installs (or with `check`, only compares) ReviewHub's files in `root`.
-pub fn run(root: &Path, with_workflow: bool, check: bool) -> Result<Outcome> {
+pub fn run(root: &Path, options: Options, check: bool) -> Result<Outcome> {
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
     let mut planned: Vec<(PathBuf, String, bool)> =
-        generated(with_workflow).into_iter().map(|g| (root.join(g.path), g.content, g.executable)).collect();
+        generated(options).into_iter().map(|g| (root.join(g.path), g.content, g.executable)).collect();
+    // Turning the pre-push hook off removes its files.
+    if !options.pre_push && !check {
+        for path in [PRE_PUSH, GIT_PRE_PUSH] {
+            let _ = fs::remove_file(root.join(path));
+        }
+    }
 
     let read = |p: &Path| fs::read_to_string(p).unwrap_or_default();
     let settings_path = root.join(".claude/settings.json");
@@ -211,6 +293,8 @@ pub fn run(root: &Path, with_workflow: bool, check: bool) -> Result<Outcome> {
 mod tests {
     use super::*;
 
+    const ALL: Options = Options { workflow: true, pre_push: true };
+
     fn tempdir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("reviewhub-init-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -221,9 +305,9 @@ mod tests {
     #[test]
     fn installs_and_is_idempotent() {
         let dir = tempdir("idempotent");
-        let first = run(&dir, true, false).unwrap();
+        let first = run(&dir, ALL, false).unwrap();
         assert!(first.changes.iter().all(|(_, c)| *c == Change::Created));
-        assert!(!run(&dir, true, true).unwrap().changed(), "a second run changes nothing");
+        assert!(!run(&dir, ALL, true).unwrap().changed(), "a second run changes nothing");
         assert_eq!(fs::read_to_string(dir.join(".claude/reviewhub/bin/VERSION")).unwrap().trim(), VERSION);
         for name in ["reviewhub.yml", "reviewhub-security.yml"] {
             let workflow = fs::read_to_string(dir.join(".github/workflows").join(name)).unwrap();
@@ -241,8 +325,32 @@ mod tests {
     }
 
     #[test]
+    fn installs_the_git_hook_without_clobbering_others() {
+        let dir = tempdir("git-hook");
+        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+        let hook = dir.join(".git/hooks/pre-push");
+
+        assert!(install_git_hook(&dir, true).unwrap().unwrap().contains("installed"));
+        assert_eq!(fs::read_to_string(&hook).unwrap(), include_str!("../templates/git-pre-push"));
+        assert_eq!(install_git_hook(&dir, true).unwrap(), None, "already installed");
+        assert!(install_git_hook(&dir, false).unwrap().unwrap().contains("removed"));
+        assert!(!hook.exists());
+
+        fs::write(&hook, "#!/bin/sh\nnpm test\n").unwrap();
+        assert!(install_git_hook(&dir, true).unwrap().unwrap().contains("already exists"));
+        assert_eq!(install_git_hook(&dir, false).unwrap(), None);
+        assert_eq!(fs::read_to_string(&hook).unwrap(), "#!/bin/sh\nnpm test\n", "someone else's hook stays");
+
+        let off = run(&dir, Options { workflow: false, pre_push: false }, false).unwrap();
+        assert!(!pre_push_installed(&dir) && off.changes.iter().all(|(p, _)| !p.contains("pre-push")));
+        run(&dir, ALL, false).unwrap();
+        assert!(pre_push_installed(&dir) && dir.join(GIT_PRE_PUSH).is_file());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn renames_every_reference_to_plugin_names() {
-        for g in generated(true) {
+        for g in generated(ALL) {
             for stale in [
                 "reviewhub:review",
                 "reviewhub:security",
@@ -254,7 +362,10 @@ mod tests {
                 assert!(!g.content.contains(stale), "{} still mentions {stale:?}", g.path);
             }
         }
-        let agent = generated(false).into_iter().find(|g| g.path.ends_with("reviewhub-security-reviewer.md")).unwrap();
+        let agent = generated(Options { workflow: false, pre_push: false })
+            .into_iter()
+            .find(|g| g.path.ends_with("reviewhub-security-reviewer.md"))
+            .unwrap();
         assert!(agent.content.contains("\nname: reviewhub-security-reviewer\n"));
     }
 
