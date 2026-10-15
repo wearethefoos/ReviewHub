@@ -4,8 +4,10 @@
 mod briefing;
 mod github;
 mod init;
+mod metrics;
 mod push;
 mod render;
+mod stacks;
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -81,14 +83,14 @@ enum Cmd {
     /// Set up a repository for ReviewHub in Claude Code, including cloud sessions that can't install plugins
     #[command(
         after_help = "Writes the ReviewHub skills and security subagent under .claude/, a launcher pinned to this CLI's \
-version, hooks in .claude/settings.json, a note in CLAUDE.md, and the PR briefing and security review workflows. \
+version, hooks in .claude/settings.json, a note in CLAUDE.md, and the PR briefing, security review and metrics workflows (with a coverage script for the test stacks it detects). \
 Commit the result. Run it again with a newer CLI to update."
     )]
     Init {
         /// Repository root [default: the git repository containing the current directory]
         #[arg(long, value_name = "DIR")]
         dir: Option<PathBuf>,
-        /// Don't add the workflows (.github/workflows/reviewhub.yml and reviewhub-security.yml)
+        /// Don't add the workflows (briefing, security review, metrics) or the coverage script
         #[arg(long)]
         no_workflow: bool,
         /// Install the git pre-push hook that gets pushes from agent sessions security-reviewed
@@ -146,11 +148,19 @@ when the ReviewHub security review workflow reviews it (unless --force). Needs C
         #[arg(value_parser = parse_kind, value_name = "manifest|security|metrics")]
         kind: Kind,
     },
-    /// Build a metrics report from an lcov coverage file
+    /// Build a metrics report: coverage from lcov files, complexity of the changed files
+    #[command(
+        after_help = "Run it from the repository root. Relative paths in an lcov file are resolved against the root, \
+or else against the directories above the lcov file (for a project in a subdirectory)."
+    )]
     Metrics {
-        #[arg(long, value_name = "FILE")]
-        lcov: PathBuf,
-        /// Strip this prefix from absolute paths [default: current directory]
+        /// lcov coverage files (e.g. one per language)
+        #[arg(long, value_name = "FILE", num_args = 1.., required_unless_present = "base")]
+        lcov: Vec<PathBuf>,
+        /// Measure the complexity of the files changed since this git ref (its merge base with HEAD)
+        #[arg(long, value_name = "REF")]
+        base: Option<String>,
+        /// Repository root; stripped from absolute paths [default: current directory]
         #[arg(long, value_name = "DIR")]
         root: Option<PathBuf>,
         /// Line coverage of the base branch, in percent
@@ -322,19 +332,26 @@ fn run(cli: Cli) -> Result<()> {
             println!("{} is a valid {} report", file.display(), kind.as_str());
         }
         Cmd::Schema { kind } => println!("{}", serde_json::to_string_pretty(&kind.schema())?),
-        Cmd::Metrics { lcov, root, base_lines, commit } => {
-            let text = std::fs::read_to_string(&lcov).with_context(|| format!("cannot read {}", lcov.display()))?;
+        Cmd::Metrics { lcov, base, root, base_lines, commit } => {
             let root = match root {
                 Some(r) => r,
                 None => std::env::current_dir()?,
             };
-            let (files, lines) = lcov::parse_lcov(&text, &root.to_string_lossy());
-            let report = MetricsReport {
-                version: ReportVersion::V1,
-                commit,
-                coverage: Some(Coverage { tool: Some("lcov".into()), lines: Some(lines), base_lines, files }),
-                quality: None,
+            let coverage = if lcov.is_empty() {
+                None
+            } else {
+                let mut text = String::new();
+                for file in &lcov {
+                    let raw =
+                        std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+                    text.push_str(&metrics::resolve_lcov_paths(&raw, &root, file));
+                    text.push('\n');
+                }
+                let (files, lines) = lcov::parse_lcov(&text, &root.to_string_lossy());
+                Some(Coverage { tool: Some("lcov".into()), lines: Some(lines), base_lines, files })
             };
+            let quality = base.map(|base| metrics::changed_quality(&root, &base)).transpose()?;
+            let report = MetricsReport { version: ReportVersion::V1, commit, coverage, quality };
             // Round-trip through validation so the output is guaranteed to be accepted.
             let report = reports::validate(Kind::Metrics, &serde_json::to_value(&report)?).map_err(|e| anyhow!(e))?;
             println!("{}", serde_json::to_string_pretty(&report.to_value())?);

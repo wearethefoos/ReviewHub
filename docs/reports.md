@@ -106,13 +106,17 @@ Deviations, decisions, validations and gaps take `files: [{ "path": "...", "line
 
 ## `metrics`
 
-Build it from an lcov report in CI:
+Build it in CI from the repository root, from lcov files and the pull request's base:
 
 ```sh
-reviewhub metrics --lcov coverage/lcov.info --commit "$GITHUB_SHA" > metrics.json
+reviewhub metrics --lcov coverage/*.info --base "$BASE_SHA" --commit "$HEAD_SHA" > metrics.json
 ```
 
+`--lcov` takes one or more lcov files. Relative paths in them are resolved against the repository root, then against the directories above the lcov file and the root's subdirectories, so a project in a subdirectory needs no path rewriting. `--base` measures the complexity of every file changed since the merge base with `HEAD`, before and after: one plus the number of decision points (branches, loops, case arms, catch clauses, boolean operators), after removing comments and strings. It is the same rough measure for Rust, JavaScript/TypeScript, Go, Java, Kotlin, Swift, C/C++, C#, PHP, Scala, Dart, Python and Ruby, so it compares a file's before and after, not one language with another.
+
 `uncoveredLines` per file is what lets ReviewHub mark changed lines no test runs. `quality.files[].complexityDelta` and `lintIssues` are optional and raise a file's focus score.
+
+`reviewhub init` sets this up: `.github/workflows/reviewhub-metrics.yml` runs `.github/reviewhub-coverage.sh` and publishes the report on every pull request (see the [README](../README.md#coverage-and-quality)).
 
 ## How the focus score works
 

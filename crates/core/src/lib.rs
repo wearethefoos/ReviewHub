@@ -4,6 +4,7 @@
 
 pub mod ci;
 pub mod classify;
+pub mod complexity;
 pub mod diff;
 pub mod focus;
 pub mod git;

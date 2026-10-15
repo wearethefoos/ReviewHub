@@ -3,13 +3,16 @@
 //! from the mobile app). Writes the plugin's skills and subagent under
 //! `.claude/`, a launcher pinned to this CLI's version, hooks in
 //! `.claude/settings.json`, an opt-in note in `CLAUDE.md`, and the briefing
-//! and security review workflows; optionally a git pre-push hook. The plugin's files are compiled in, so there is one source.
+//! security review and metrics workflows with a coverage script for the
+//! detected test stacks; optionally a git pre-push hook. The plugin's files are compiled in, so there is one source.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
+
+use crate::stacks::{self, Stack};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -40,7 +43,11 @@ struct Generated {
     path: &'static str,
     content: String,
     executable: bool,
+    /// Written once, then the repository's to edit: never overwritten.
+    keep_existing: bool,
 }
+
+const COVERAGE_SCRIPT: &str = ".github/reviewhub-coverage.sh";
 
 /// What `reviewhub init` sets up besides the skills, subagent, launcher and Claude Code hooks.
 #[derive(Debug, Clone, Copy)]
@@ -54,8 +61,13 @@ const GIT_PRE_PUSH: &str = ".claude/reviewhub/git-pre-push";
 /// First line after the shebang of the hook ReviewHub installs in `.git/hooks`.
 const GIT_HOOK_MARKER: &str = "# reviewhub:";
 
-fn generated(options: Options) -> Vec<Generated> {
-    let file = |path, content: &str, executable| Generated { path, content: content.to_string(), executable };
+fn generated(options: Options, stacks: &[Stack]) -> Vec<Generated> {
+    let file = |path, content: &str, executable| Generated {
+        path,
+        content: content.to_string(),
+        executable,
+        keep_existing: false,
+    };
     let mut files = vec![
         file(
             ".claude/skills/reviewhub-review/SKILL.md",
@@ -97,6 +109,20 @@ fn generated(options: Options) -> Vec<Generated> {
             &include_str!("../templates/reviewhub-security.yml").replace("{{VERSION}}", VERSION),
             false,
         ));
+        files.push(file(
+            ".github/workflows/reviewhub-metrics.yml",
+            &include_str!("../templates/reviewhub-metrics.yml")
+                .replace("{{VERSION}}", VERSION)
+                .replace("{{SETUP}}", &stacks::setup_steps(stacks)),
+            false,
+        ));
+        files.push(Generated {
+            path: COVERAGE_SCRIPT,
+            content: include_str!("../templates/reviewhub-coverage.sh")
+                .replace("{{COMMANDS}}", stacks::coverage_commands(stacks).trim_matches('\n')),
+            executable: true,
+            keep_existing: true,
+        });
     }
     files
 }
@@ -248,8 +274,11 @@ pub fn run(root: &Path, options: Options, check: bool) -> Result<Outcome> {
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
-    let mut planned: Vec<(PathBuf, String, bool)> =
-        generated(options).into_iter().map(|g| (root.join(g.path), g.content, g.executable)).collect();
+    let stacks = stacks::detect(root);
+    let mut planned: Vec<(PathBuf, String, bool, bool)> = generated(options, &stacks)
+        .into_iter()
+        .map(|g| (root.join(g.path), g.content, g.executable, g.keep_existing))
+        .collect();
     // Turning the pre-push hook off removes its files.
     if !options.pre_push && !check {
         for path in [PRE_PUSH, GIT_PRE_PUSH] {
@@ -259,15 +288,15 @@ pub fn run(root: &Path, options: Options, check: bool) -> Result<Outcome> {
 
     let read = |p: &Path| fs::read_to_string(p).unwrap_or_default();
     let settings_path = root.join(".claude/settings.json");
-    planned.push((settings_path.clone(), update_settings(&read(&settings_path))?, false));
+    planned.push((settings_path.clone(), update_settings(&read(&settings_path))?, false, false));
     let claude_md = root.join("CLAUDE.md");
-    planned.push((claude_md.clone(), update_claude_md(&read(&claude_md)), false));
+    planned.push((claude_md.clone(), update_claude_md(&read(&claude_md)), false, false));
 
     let mut changes = Vec::new();
-    for (path, content, executable) in planned {
+    for (path, content, executable, keep_existing) in planned {
         let relative = path.strip_prefix(root).unwrap_or(&path).display().to_string();
         let change = match fs::read_to_string(&path) {
-            Ok(current) if current == content => Change::Unchanged,
+            Ok(current) if current == content || keep_existing => Change::Unchanged,
             Ok(_) => Change::Updated,
             Err(_) => Change::Created,
         };
@@ -308,6 +337,9 @@ mod tests {
         let first = run(&dir, ALL, false).unwrap();
         assert!(first.changes.iter().all(|(_, c)| *c == Change::Created));
         assert!(!run(&dir, ALL, true).unwrap().changed(), "a second run changes nothing");
+        fs::write(dir.join(COVERAGE_SCRIPT), "#!/bin/sh\nmake coverage\n").unwrap();
+        assert!(!run(&dir, ALL, false).unwrap().changed(), "the coverage script is the repository's once written");
+        assert_eq!(fs::read_to_string(dir.join(COVERAGE_SCRIPT)).unwrap(), "#!/bin/sh\nmake coverage\n");
         assert_eq!(fs::read_to_string(dir.join(".claude/reviewhub/bin/VERSION")).unwrap().trim(), VERSION);
         for name in ["reviewhub.yml", "reviewhub-security.yml"] {
             let workflow = fs::read_to_string(dir.join(".github/workflows").join(name)).unwrap();
@@ -350,7 +382,7 @@ mod tests {
 
     #[test]
     fn renames_every_reference_to_plugin_names() {
-        for g in generated(ALL) {
+        for g in generated(ALL, &[]) {
             for stale in [
                 "reviewhub:review",
                 "reviewhub:security",
@@ -362,7 +394,7 @@ mod tests {
                 assert!(!g.content.contains(stale), "{} still mentions {stale:?}", g.path);
             }
         }
-        let agent = generated(Options { workflow: false, pre_push: false })
+        let agent = generated(Options { workflow: false, pre_push: false }, &[])
             .into_iter()
             .find(|g| g.path.ends_with("reviewhub-security-reviewer.md"))
             .unwrap();

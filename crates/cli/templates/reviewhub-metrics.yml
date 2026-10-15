@@ -1,0 +1,89 @@
+# ReviewHub metrics: publishes test coverage of the changed lines and the
+# complexity of the changed files on every pull request, as a ReviewHub metrics
+# report. Installed by `reviewhub init` (ReviewHub {{VERSION}}); re-run it to update.
+#
+# The coverage commands are in .github/reviewhub-coverage.sh, which `reviewhub
+# init` wrote for the test stacks it found and won't overwrite: edit it to
+# match how your tests run. Toolchains for those stacks are set up below.
+#
+# The measuring job runs the pull request's code with a read-only token; a
+# separate job publishes. Pull requests from forks are skipped.
+name: ReviewHub metrics
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reviewhub-metrics-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+{{SETUP}}      - name: Install the ReviewHub CLI
+        env:
+          REVIEWHUB_VERSION: "{{VERSION}}"
+          REVIEWHUB_INSTALL_DIR: ${{ runner.temp }}/reviewhub
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v{{VERSION}}/install.sh | sh
+          echo "$RUNNER_TEMP/reviewhub" >>"$GITHUB_PATH"
+      # Failing tests still leave coverage for the tests that ran, so carry on.
+      - name: Measure coverage
+        continue-on-error: true
+        env:
+          REVIEWHUB_COVERAGE_DIR: ${{ runner.temp }}/coverage
+        run: sh .github/reviewhub-coverage.sh
+      - name: Build the metrics report
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set --
+          for f in "$RUNNER_TEMP"/coverage/*.info; do
+            [ -f "$f" ] && set -- "$@" --lcov "$f"
+          done
+          reviewhub metrics "$@" --base "$BASE_SHA" --commit "$HEAD_SHA" >reviewhub-metrics.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewhub-metrics
+          path: reviewhub-metrics.json
+          retention-days: 7
+
+  publish:
+    needs: measure
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reviewhub-metrics
+      - name: Install the ReviewHub CLI
+        env:
+          REVIEWHUB_VERSION: "{{VERSION}}"
+          REVIEWHUB_INSTALL_DIR: ${{ runner.temp }}/reviewhub
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v{{VERSION}}/install.sh | sh
+          echo "$RUNNER_TEMP/reviewhub" >>"$GITHUB_PATH"
+      # Comments posted with the workflow token don't trigger the briefing
+      # workflow, so refresh the briefing here.
+      - name: Publish the report and refresh the briefing
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          reviewhub publish metrics reviewhub-metrics.json --repo "$GITHUB_REPOSITORY" --pr "$PR"
+          reviewhub briefing "$GITHUB_REPOSITORY#$PR" --publish
