@@ -37,6 +37,8 @@ Write a ReviewHub security report (schema: `reviewhub schema security`) to `$TMP
 - `suggestion.diff`: a unified diff (`--- a/<path>`, `+++ b/<path>`, hunks) that applies with `git apply` on the head commit, when the fix is local and you are confident in it,
 - `suggestion.prompt`: a self-contained prompt that another agent can run to implement the fix and a regression test, when the fix is larger than a patch.
 
+The report is published on the pull request. If a finding is a leaked secret, name the file and line and redact the value (`ghp_…`); never copy credentials into the report.
+
 Set `scanner.name` to `reviewhub security-reviewer`, `commit` to the head commit, and write a two or three sentence `summary` that tells the reviewer what to fix before merging.
 
 Run `reviewhub validate security $TMPDIR/reviewhub-security.json` and fix every error. Don't publish the report. Reply with the file path, the number of findings by severity, and one line per critical or high finding.

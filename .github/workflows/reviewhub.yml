@@ -1,6 +1,6 @@
 # ReviewHub briefing: keeps one comment on every pull request with what needs a
 # reviewer's judgement, readable anywhere, including the GitHub mobile app.
-# Installed by `reviewhub init` (ReviewHub 0.3.0); re-run it to update.
+# Installed by `reviewhub init` (ReviewHub 0.4.0); re-run it to update.
 name: ReviewHub briefing
 
 on:
@@ -32,9 +32,9 @@ jobs:
     steps:
       - name: Install the ReviewHub CLI
         env:
-          REVIEWHUB_VERSION: "0.3.0"
+          REVIEWHUB_VERSION: "0.4.0"
           REVIEWHUB_INSTALL_DIR: ${{ runner.temp }}/reviewhub
-        run: curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v0.3.0/install.sh | sh
+        run: curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v0.4.0/install.sh | sh
       - name: Publish the briefing
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -13,7 +13,7 @@ Your job is to spend the reviewer's attention well: lead with what needs a human
 2. Run `reviewhub review <pr> --all` and read the briefing. It ranks every file: Focus files need line-by-line reading, Skim files a glance, Skip files none. It also shows which reports exist (the author's manifest, the security report and metrics); any of them may be missing or invalid. When you need exact fields, such as an alternative's prompt or a finding's patch, use `reviewhub review <pr> --json` (diffs left out).
 3. Give the user a short briefing, in this order, leaving out empty sections:
    - **Blockers:** critical and high security findings, failed validation, blocking rollout steps.
-   - **Deviations** from the original prompt, with the agent's reason. Ask whether each is acceptable.
+   - **Deviations** from what was asked, with the agent's reason. Ask whether each is acceptable.
    - **High-impact decisions** with the alternatives. Ask which way the user wants to go.
    - **Not validated:** gaps and who should close them.
    - **Where to read:** the Focus files and, for each, the one or two reasons it ranks high.
