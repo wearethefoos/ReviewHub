@@ -27,7 +27,7 @@ Report only findings you can tie to specific lines. Don't pad the report; an emp
 
 ## The report
 
-Write a ReviewHub security report (schema: `reviewhub schema security`) to `$TMPDIR/reviewhub-security.json`. For each finding:
+Write a ReviewHub security report (schema: `reviewhub schema security`) to a new private file created with `mktemp "${TMPDIR:-/tmp}/reviewhub-security.XXXXXX"` (never a fixed name in a shared temp directory). For each finding:
 
 - `severity`: `critical` (exploitable now, high impact), `high`, `medium`, `low` or `info`,
 - `confidence`: how sure you are it is real and reachable,
@@ -41,4 +41,4 @@ The report is published on the pull request. If a finding is a leaked secret, na
 
 Set `scanner.name` to `reviewhub security-reviewer`, `commit` to the head commit, and write a two or three sentence `summary` that tells the reviewer what to fix before merging.
 
-Run `reviewhub validate security $TMPDIR/reviewhub-security.json` and fix every error. Don't publish the report. Reply with the file path, the number of findings by severity, and one line per critical or high finding.
+Run `reviewhub validate security <that file>` and fix every error. Don't publish the report. Reply with the file path, the number of findings by severity, and one line per critical or high finding.
