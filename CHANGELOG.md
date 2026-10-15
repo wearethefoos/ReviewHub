@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/wearethefoos/ReviewHub/compare/v0.5.0...v0.5.1) (2026-10-15)
+
+
+### Bug fixes
+
+* **extension:** comment on several lines, and highlight code ([#13](https://github.com/wearethefoos/ReviewHub/issues/13)) ([360a7e7](https://github.com/wearethefoos/ReviewHub/commit/360a7e75808e22b11ca0c53601393eaa413e9271))
+
 ## [0.5.0](https://github.com/wearethefoos/ReviewHub/compare/v0.4.0...v0.5.0) (2026-10-15)
 
 

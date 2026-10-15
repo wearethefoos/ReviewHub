@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ReviewHub",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Review agent-authored GitHub pull requests by what matters: the ask, deviations, decisions, validation gaps and security findings.",
   "homepage_url": "https://github.com/wearethefoos/ReviewHub",
   "icons": {
