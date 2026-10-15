@@ -36,11 +36,11 @@ export function Security({ pr, report, error }: { pr: PullRequestInfo; report?: 
           <pre className="mt-2 whitespace-pre-wrap text-left font-mono text-xs">{error}</pre>
         ) : (
           <>
-            Run an independent security agent over this pull request, for example <Code>/reviewhub:security-review</Code> with the{" "}
-            <a href="https://github.com/wearethefoos/ReviewHub#claude-code-plugin" target="_blank" rel="noreferrer">
-              ReviewHub plugin
-            </a>{" "}
-            for Claude Code.
+            Repositories set up with <Code>reviewhub init</Code> get one from CI or the agent&apos;s session (see{" "}
+            <a href="https://github.com/wearethefoos/ReviewHub#security-reviews" target="_blank" rel="noreferrer">
+              security reviews
+            </a>
+            ). By hand: <Code>/reviewhub:security-review</Code> in Claude Code, or <Code>reviewhub security-review</Code> in a terminal.
           </>
         )}
       </EmptyState>

@@ -81,9 +81,11 @@ It writes:
 
 - `.claude/skills/reviewhub-review`, `reviewhub-manifest`, `reviewhub-security-review` and `.claude/agents/reviewhub-security-reviewer.md`: the plugin's skills and subagent, under repository names;
 - `.claude/reviewhub/`: a launcher pinned to the CLI version that ran `init`, and the hook scripts;
-- hooks in `.claude/settings.json`: at session start the pinned CLI goes on `PATH` (downloaded and checksum-verified on first use); after `gh pr create`, Claude is reminded to publish the manifest;
+- hooks in `.claude/settings.json`: at session start the pinned CLI goes on `PATH` (downloaded and checksum-verified on first use); after `gh pr create`, Claude is reminded to publish the manifest and to get the pull request security-reviewed;
 - a ReviewHub section in `CLAUDE.md`, which opts the repository in;
-- `.github/workflows/reviewhub.yml`: the briefing comment (leave it out with `--no-workflow`).
+- `.github/workflows/reviewhub.yml`: the briefing comment;
+- `.github/workflows/reviewhub-security.yml`: the [security review](#security-reviews) in CI (leave both workflows out with `--no-workflow`);
+- with `--pre-push` (`init` asks when run in a terminal): a git pre-push hook that gets pushes from agent sessions security-reviewed, also when you open the pull request yourself.
 
 Repository files load in every Claude Code session, including cloud sessions started from the Claude app on your phone, so this works where plugins can't be installed. Run `reviewhub init` again with a newer CLI to update; `reviewhub init --check` exits with 1 when the files are out of date. With the plugin installed too, you'd get both sets of skills; one of the two is enough.
 
@@ -108,6 +110,7 @@ reviewhub schema manifest                                   # JSON Schema to giv
 reviewhub validate manifest manifest.json                   # exit code 1 with readable errors if invalid
 reviewhub metrics --lcov coverage/lcov.info > metrics.json  # coverage report from lcov
 reviewhub publish security security.json --repo owner/repo --pr 123   # create or update the PR comment
+reviewhub security-review owner/repo#123                    # headless Claude Code security review, published
 ```
 
 It uses `GITHUB_TOKEN`, or your `gh auth login`.
@@ -125,8 +128,18 @@ Each report has its own author, so no agent grades its own work. Reports are onl
 To set up a repository:
 
 1. Run `reviewhub init` and commit the result: Claude Code then publishes a manifest with every pull request, and the briefing comment keeps reviewers up to date. Other agents can follow [`plugin/skills/review-manifest/SKILL.md`](plugin/skills/review-manifest/SKILL.md).
-2. Run an independent security review on each pull request: `/reviewhub:security-review`, or another agent prompted with [`plugin/agents/security-reviewer.md`](plugin/agents/security-reviewer.md).
+2. Get an independent security review on each pull request: see [Security reviews](#security-reviews).
 3. Publish coverage from CI, for example with [`docs/examples/reviewhub-metrics.yml`](docs/examples/reviewhub-metrics.yml).
+
+## Security reviews
+
+The security report comes from an agent that didn't write the change and only gets the pull request reference. In a repository set up with `reviewhub init`, it runs:
+
+- **In CI**, when the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret (each review uses API credits or your Claude subscription). `.github/workflows/reviewhub-security.yml` runs Claude Code with the security-reviewer instructions from the base branch and a read-only token; a separate job validates and publishes the report. Pull requests from forks get no secrets and are skipped.
+- **Otherwise, in the agent's session.** After opening a pull request, Claude runs `reviewhub security-status owner/repo#123`; when no workflow reviews it, Claude has the security-reviewer subagent review it and publishes the report.
+- **On push, with the pre-push hook** (`reviewhub init --pre-push`). For branches with a review manifest from an agent session, it tells Claude to run the review (in a Claude Code session), or starts a headless Claude Code review in the background (from your terminal; log in `.git/reviewhub/security-review.log`) that publishes once the push reaches the pull request. It does nothing when CI reviews the pull request, and never blocks a push. Git hooks aren't committed: `init` installs it in your clone, and Claude Code sessions install it in theirs.
+
+By hand: `/reviewhub:security-review owner/repo#123` in Claude Code, or `reviewhub security-review owner/repo#123` in a terminal with Claude Code installed.
 
 ## Development
 
