@@ -10,7 +10,9 @@ name: Release
 #
 # Normally called by the Release Please workflow for the release it just
 # created. Can also run by hand from the Actions tab (it then creates the tag
-# and the release), or on a pushed tag.
+# and the release). It deliberately has no tag-push trigger: release-please
+# pushes the tag with RELEASE_PLEASE_TOKEN, which would start a second,
+# overlapping build of the same release.
 on:
   workflow_call:
     inputs:
@@ -18,8 +20,6 @@ on:
         description: Tag of the release to attach the builds to
         required: true
         type: string
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       version:
@@ -34,7 +34,7 @@ permissions:
   contents: read
 
 env:
-  TAG: ${{ inputs.tag || (github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version)) || github.ref_name }}
+  TAG: ${{ inputs.tag || format('v{0}', inputs.version) }}
 
 jobs:
   check:
@@ -120,7 +120,7 @@ jobs:
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        # release-please creates the release first; a manual run or a pushed tag creates it here
+        # release-please creates the release first; a manual run creates it here
         # (for a manual run, --target creates the tag on the built commit).
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
