@@ -4,6 +4,7 @@ export type { Alternative } from "@/generated/Alternative";
 export type { Annotation } from "@/generated/Annotation";
 export type { AnnotationKind } from "@/generated/AnnotationKind";
 export type { Author } from "@/generated/Author";
+export type { AuthorVerdict } from "@/generated/AuthorVerdict";
 export type { CommentTarget } from "@/generated/CommentTarget";
 export type { DraftComment } from "@/generated/DraftComment";
 export type { Side } from "@/generated/Side";

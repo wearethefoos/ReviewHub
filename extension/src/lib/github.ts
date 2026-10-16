@@ -130,10 +130,49 @@ export function createClient(token: string, fetchImpl: Fetch = fetch) {
     throw new GitHubError(`GitHub didn't accept the review: ${[details.message, errors].filter(Boolean).join(": ") || res.status}`, res.status);
   }
 
-  return { get, fetchPullRequest, submitReview };
+  /** The login the token belongs to. */
+  async function viewer(): Promise<string> {
+    return ((await get("/user")) as { login: string }).login;
+  }
+
+  /** The merge methods the repository allows, in GitHub's order. */
+  async function mergeMethods(ref: PrRef): Promise<MergeMethod[]> {
+    const repo = (await get(`/repos/${ref.owner}/${ref.repo}`)) as Record<string, unknown>;
+    return (["merge", "squash", "rebase"] as const).filter((m) => repo[`allow_${m === "merge" ? "merge_commit" : `${m}_merge`}`] !== false);
+  }
+
+  /** Merges the pull request if its head is still `sha` (so nothing unreviewed gets merged). */
+  async function merge(ref: PrRef, sha: string, method: MergeMethod): Promise<void> {
+    const { owner, repo, number } = ref;
+    const res = await fetchImpl(`${API}/repos/${owner}/${repo}/pulls/${number}/merge`, {
+      method: "PUT",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify({ sha, merge_method: method }),
+    });
+    if (res.ok) return;
+    if (res.status === 401) throw new GitHubError("GitHub rejected the token. Update it in the ReviewHub options.", 401);
+    if (res.status === 403 || res.status === 404) {
+      throw new GitHubError(
+        "GitHub refused the merge. The token needs Contents: Read and write access to this repository (see the ReviewHub options).",
+        res.status,
+      );
+    }
+    if (res.status === 409) throw new GitHubError("The pull request got new commits since you reviewed it. Reload it, then review the new commits.", 409);
+    const details = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new GitHubError(`GitHub didn't merge the pull request: ${details.message ?? res.status}`, res.status);
+  }
+
+  return { get, fetchPullRequest, submitReview, viewer, mergeMethods, merge };
 }
 
 export type ReviewEvent = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
+
+export type MergeMethod = "merge" | "squash" | "rebase";
 
 export interface ReviewSubmission {
   commitId: string;

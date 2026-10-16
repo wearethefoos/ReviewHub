@@ -2,6 +2,7 @@
 // validation and trust rules live in Rust (crates/core); this only converts JSON.
 import init, * as wasm from "@/wasm/reviewhub_wasm.js";
 import type { Annotation } from "@/generated/Annotation";
+import type { AuthorVerdict } from "@/generated/AuthorVerdict";
 import type { CommentTarget } from "@/generated/CommentTarget";
 import type { DiffLine } from "@/generated/DiffLine";
 import type { DraftComment } from "@/generated/DraftComment";
@@ -78,6 +79,11 @@ export function findingComment(finding: SecurityFinding, hunks: Hunk[]): DraftCo
 /** Synchronous. A draft review comment for an annotation on the diff, or null when its lines aren't in the diff. */
 export function annotationComment(path: string, annotation: Annotation, hunks: Hunk[]): DraftComment | null {
   return JSON.parse(wasm.annotationComment(path, JSON.stringify(annotation), JSON.stringify(hunks)));
+}
+
+/** Synchronous. The comment for a review by the pull request's author, who GitHub won't let approve or request changes. */
+export function authorReviewBody(verdict: AuthorVerdict, body: string, lineComments: number): string {
+  return wasm.authorReviewBody(JSON.stringify(verdict), body, lineComments);
 }
 
 /** What to tell the user when `latest` is newer than `current`, for this kind of install; null when up to date. */

@@ -162,3 +162,98 @@ describe("the review", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Close" })));
   });
 });
+
+describe("reviewing your own pull request", () => {
+  const API = "https://api.github.com";
+  const MERGE = `PUT ${API}/repos/o/r/pulls/7/merge`;
+
+  /** The token belongs to `login`; the demo pull request's author is agent-author. */
+  function asUser(login: string, routes: Record<string, (call: Call) => Response> = {}) {
+    github = fakeGitHub({
+      [`GET ${API}/user`]: () => github.json({ login }),
+      [`GET ${API}/repos/o/r`]: () => github.json({ allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: true }),
+      [MERGE]: () => github.json({ merged: true }),
+      [REVIEWS]: () => github.json({ html_url: "https://github.com/o/r/pull/7#pullrequestreview-2" }),
+      ...routes,
+    });
+    vi.stubGlobal("fetch", github.fetch);
+    vi.stubGlobal("chrome", fakeChrome({ token: "t0ken" }).chrome);
+  }
+
+  async function finish(verdict: RegExp) {
+    await open("briefing");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Review changes/ })));
+    await waitFor(() => expect(document.body.textContent).toContain("You opened this pull request."));
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: verdict })));
+  }
+
+  const submitButton = () => screen.getByRole("button", { name: /Submit review|Merge and submit/ }) as HTMLButtonElement;
+  const methods = () => github.calls.map((c) => `${c.method} ${c.url}`).filter((c) => !c.startsWith("GET"));
+
+  it("asks the agent for changes in a comment", async () => {
+    asUser("Agent-Author");
+    await finish(/Request changes/);
+    expect(document.body.textContent).toContain("so this is posted as a comment asking the agent to make them");
+    fireEvent.change(screen.getByPlaceholderText("Leave a comment"), { target: { value: "Rename the flag." } });
+    await act(async () => fireEvent.click(submitButton()));
+    await waitFor(() => expect(screen.getByText("Review submitted")).toBeTruthy());
+    const review = submitted();
+    expect(review.event).toBe("COMMENT");
+    expect(review.body).toMatch(/^<!-- reviewhub-author-review: changes-requested -->\n\*\*Changes requested\*\* by the author\./);
+    expect(review.body).toMatch(/Rename the flag\.$/);
+  });
+
+  it("approves and merges, merging first", async () => {
+    asUser("agent-author");
+    await finish(/^Approve/);
+    expect((screen.getByRole("combobox", { name: "Merge method" }) as HTMLSelectElement).value).toBe("squash");
+    fireEvent.change(screen.getByRole("combobox", { name: "Merge method" }), { target: { value: "rebase" } });
+    expect(submitButton().textContent).toBe("Merge and submit");
+    await act(async () => fireEvent.click(submitButton()));
+    await waitFor(() => expect(screen.getByText(/Merged, and your review posted/)).toBeTruthy());
+    expect(methods()).toEqual([MERGE, REVIEWS]);
+    expect(github.calls.find((c) => c.method === "PUT")!.body).toEqual({ sha: demo.pr.headSha, merge_method: "rebase" });
+    expect(submitted().event).toBe("COMMENT");
+    expect(submitted().body).toContain("**Approved and merged** by the author.");
+  });
+
+  it("posts nothing when GitHub won't merge, and says so when only the comment failed", async () => {
+    asUser("agent-author", { [MERGE]: () => github.json({ message: "Required status check \"rust\" is expected." }, 405) });
+    await finish(/^Approve/);
+    await act(async () => fireEvent.click(submitButton()));
+    await waitFor(() => expect(document.body.textContent).toContain('GitHub didn\'t merge the pull request: Required status check "rust" is expected.'));
+    expect(methods()).toEqual([MERGE]);
+    cleanup();
+
+    asUser("agent-author", { [REVIEWS]: () => github.json({ message: "Server Error" }, 500) });
+    await finish(/^Approve/);
+    await act(async () => fireEvent.click(submitButton()));
+    await waitFor(() => expect(document.body.textContent).toContain("Merged, but your review comment wasn't posted"));
+  });
+
+  it("approves without merging when you say why it waits", async () => {
+    asUser("agent-author");
+    await finish(/^Approve/);
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: /Don't merge yet/ })));
+    expect(submitButton().disabled).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: "Why it shouldn't be merged yet" }), { target: { value: "After the mobile release." } });
+    expect(submitButton().disabled).toBe(false);
+    await act(async () => fireEvent.click(submitButton()));
+    await waitFor(() => expect(screen.getByText("Review submitted")).toBeTruthy());
+    expect(methods()).toEqual([REVIEWS]);
+    expect(submitted().body).toContain("**Approved** by the author, but not to be merged yet: After the mobile release.");
+  });
+
+  it("leaves other reviewers' verdicts to GitHub", async () => {
+    asUser("someone-else");
+    await open("briefing");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Review changes/ })));
+    await waitFor(() => expect(github.calls.some((c) => c.url === `${API}/user`)).toBe(true));
+    expect(document.body.textContent).not.toContain("You opened this pull request.");
+    await act(async () => fireEvent.click(screen.getByRole("radio", { name: /^Approve/ })));
+    expect(screen.queryByRole("radio", { name: /Merge it now/ })).toBeNull();
+    await act(async () => fireEvent.click(submitButton()));
+    await waitFor(() => expect(submitted().event).toBe("APPROVE"));
+    expect(github.calls.some((c) => c.url === `${API}/repos/o/r`)).toBe(false);
+  });
+});

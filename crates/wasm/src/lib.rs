@@ -86,6 +86,14 @@ pub fn selection_target(hunk: &str, from: usize, to: usize) -> Result<String, Js
     Ok(json!(reviewhub_core::review::selection_target(&hunk, from, to)).to_string())
 }
 
+/// The comment body for a review by the pull request's author (`AuthorVerdict` as JSON), with `lineComments` diff
+/// comments going with it.
+#[wasm_bindgen(js_name = authorReviewBody)]
+pub fn author_review_body(verdict: &str, body: &str, line_comments: usize) -> Result<String, JsError> {
+    let verdict: reviewhub_core::review::AuthorVerdict = parse(verdict, "author verdict")?;
+    Ok(reviewhub_core::review::author_review_body(&verdict, body, line_comments))
+}
+
 /// What to tell a user of this kind of install (`plugin`, `repo`, `cli`, `extension-unpacked`) when `latest` is
 /// newer than `current`, or `undefined`.
 #[wasm_bindgen(js_name = updateNotice)]
@@ -164,6 +172,13 @@ mod tests {
             serde_json::from_str(&annotation_comment("a.ts", &annotation.to_string(), &hunks.to_string()).unwrap())
                 .unwrap();
         assert!(draft["body"].as_str().unwrap().contains("Untested"), "{draft}");
+    }
+
+    #[test]
+    fn writes_author_reviews() {
+        let body = author_review_body(r#"{"kind":"approve-not-yet","reason":"After the release."}"#, "", 0).unwrap();
+        assert!(body.contains("not to be merged yet: After the release."), "{body}");
+        assert!(author_review_body(r#"{"kind":"request-changes"}"#, "Fix it.", 3).unwrap().contains("3 comments"));
     }
 
     #[test]

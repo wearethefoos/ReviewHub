@@ -63,7 +63,7 @@ export function Options() {
               fine-grained token
             </a>{" "}
             with read-only <span className="font-medium">Pull requests</span> and <span className="font-medium">Contents</span> access to the repositories you
-            review{web ? "" : <>; to comment, approve and request changes from ReviewHub, give it <span className="font-medium">Pull requests: Read and write</span> instead</>}.{" "}
+            review{web ? "" : <>; to comment, approve and request changes from ReviewHub, give it <span className="font-medium">Pull requests: Read and write</span> instead, and to merge your own pull requests, <span className="font-medium">Contents: Read and write</span></>}.{" "}
             {web ? "It stays in this browser tab unless you choose to remember it" : "It is stored in this browser only"} and is only sent to{" "}
             <Code>api.github.com</Code>.
           </p>

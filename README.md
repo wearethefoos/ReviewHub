@@ -44,7 +44,7 @@ On the demo pull request that means **reading 4 of 12 files closely** (130 of 22
 
 **🛡️ An independent security review.** A second agent that never saw the author's conversation reviews the pull request, and every finding comes with a patch or a prompt to fix it. It runs [in CI, in the agent's own session, or on `git push`](#security-reviews), whichever you have set up.
 
-**✍️ Review without leaving.** Comment on a line or drag over several, turn any finding into a review comment with its fix as a one-click GitHub suggestion, and submit **Comment**, **Approve** or **Request changes** in one go. Syntax highlighting and dark mode included.
+**✍️ Review without leaving.** Comment on a line or drag over several, turn any finding into a review comment with its fix as a one-click GitHub suggestion, and submit **Comment**, **Approve** or **Request changes** in one go. Reviewing a pull request your agent opened under your account? GitHub won't let authors approve, so ReviewHub posts your verdict as a comment and can merge it on the spot. Syntax highlighting and dark mode included.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/review-dark.png">
