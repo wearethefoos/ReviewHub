@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "@/components/Link";
 import { OpenOnHash } from "@/components/OpenOnHash";
 import { PrHeader, type TabCounts } from "@/components/PrHeader";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { ReportSources } from "@/components/ReportSources";
 import { Code, EmptyState } from "@/components/ui";
 import { Briefing } from "@/components/views/Briefing";
@@ -208,6 +209,7 @@ export function App() {
   return (
     <div className="min-h-screen">
       <TopBar />
+      <UpdateBanner />
       {state.status === "idle" && <Home />}
       {state.status === "loading" && <p className="mx-auto max-w-[1280px] px-6 py-10 text-fg-muted">Loading {route.demo ? "the demo" : route.pr} from GitHub…</p>}
       {state.status === "error" && (

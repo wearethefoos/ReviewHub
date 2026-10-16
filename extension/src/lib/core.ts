@@ -79,3 +79,9 @@ export function findingComment(finding: SecurityFinding, hunks: Hunk[]): DraftCo
 export function annotationComment(path: string, annotation: Annotation, hunks: Hunk[]): DraftComment | null {
   return JSON.parse(wasm.annotationComment(path, JSON.stringify(annotation), JSON.stringify(hunks)));
 }
+
+/** What to tell the user when `latest` is newer than `current`, for this kind of install; null when up to date. */
+export async function updateNotice(install: "extension-unpacked", current: string, latest: string): Promise<string | null> {
+  await loadCore();
+  return wasm.updateNotice(install, current, latest) ?? null;
+}

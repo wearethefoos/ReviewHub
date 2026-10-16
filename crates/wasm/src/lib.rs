@@ -85,3 +85,10 @@ pub fn selection_target(hunk: &str, from: usize, to: usize) -> Result<String, Js
     let hunk: reviewhub_core::diff::Hunk = parse(hunk, "hunk")?;
     Ok(json!(reviewhub_core::review::selection_target(&hunk, from, to)).to_string())
 }
+
+/// What to tell a user of this kind of install (`plugin`, `repo`, `cli`, `extension-unpacked`) when `latest` is
+/// newer than `current`, or `undefined`.
+#[wasm_bindgen(js_name = updateNotice)]
+pub fn update_notice(install: &str, current: &str, latest: &str) -> Option<String> {
+    reviewhub_core::update::notice(reviewhub_core::update::Install::parse(install)?, current, latest)
+}
