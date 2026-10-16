@@ -79,6 +79,8 @@ impl MockGitHub {
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
             "REVIEWHUB_PINNED_VERSION",
             "GITHUB_ACTIONS",
+            "CI",
+            "CLAUDECODE",
         ] {
             cmd.env_remove(var);
         }
@@ -115,9 +117,11 @@ pub fn run(cmd: &mut Command) -> Output {
     output
 }
 
-/// A fresh, empty directory for one test.
+/// A fresh, empty directory, unique to this call (tests run in parallel).
 pub fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("reviewhub-it-{name}-{}", std::process::id()));
+    static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("reviewhub-it-{name}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
