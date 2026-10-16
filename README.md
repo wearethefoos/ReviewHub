@@ -111,7 +111,9 @@ See [`docs/extension.md`](docs/extension.md) for installing from a release zip i
 - `/reviewhub:security-review owner/repo#123`: an independent security review by a subagent, published as a PR comment.
 - `reviewhub:review-manifest`: Claude writes and publishes the manifest for pull requests it opens, in repositories that opt in by mentioning ReviewHub in their `CLAUDE.md` (a hook reminds it after `gh pr create`).
 
-The plugin brings the `reviewhub` CLI with it: on first use it downloads the release binary matching the plugin's version and checks it against the release's `SHA256SUMS`. Updating the plugin updates the CLI. See [`plugin/README.md`](plugin/README.md).
+The plugin brings the `reviewhub` CLI with it: on first use it downloads the release binary matching the plugin's version and checks it against the release's `SHA256SUMS`. Updating the plugin updates the CLI.
+
+Claude Code doesn't auto-update plugins from third-party marketplaces unless you turn it on, so ReviewHub tells you at the start of a session when a newer release is out. To update: `/plugin marketplace update reviewhub`, then `/plugin` → Installed → reviewhub → **Update now**, and `/reload-plugins` (in a shell: `claude plugin marketplace update reviewhub && claude plugin update reviewhub@reviewhub`). To get updates automatically, open `/plugin` → Marketplaces → reviewhub → **Enable auto-update**. See [`plugin/README.md`](plugin/README.md).
 
 ### Repository setup: `reviewhub init`
 
@@ -134,7 +136,7 @@ It writes:
 - `.github/workflows/reviewhub-metrics.yml` and `.github/reviewhub-coverage.sh`: [coverage and quality](#coverage-and-quality) in CI (leave the three workflows out with `--no-workflow`);
 - with `--pre-push` (`init` asks when run in a terminal): a git pre-push hook that gets pushes from agent sessions security-reviewed, also when you open the pull request yourself.
 
-Repository files load in every Claude Code session, including cloud sessions started from the Claude app on your phone, so this works where plugins can't be installed. Run `reviewhub init` again with a newer CLI to update; `reviewhub init --check` exits with 1 when the files are out of date. With the plugin installed too, you'd get both sets of skills; one of the two is enough.
+Repository files load in every Claude Code session, including cloud sessions started from the Claude app on your phone, so this works where plugins can't be installed. Sessions in the repository say when a newer ReviewHub release is out. Run `reviewhub init` again with a newer CLI to update; `reviewhub init --check` exits with 1 when the files are out of date. With the plugin installed too, you'd get both sets of skills; one of the two is enough.
 
 ### CLI on its own
 
@@ -158,6 +160,7 @@ reviewhub validate manifest manifest.json                   # exit code 1 with r
 reviewhub metrics --lcov coverage/*.info --base origin/main > metrics.json  # coverage from lcov, complexity of changed files
 reviewhub publish security security.json --repo owner/repo --pr 123   # create or update the PR comment
 reviewhub security-review owner/repo#123                    # headless Claude Code security review, published
+reviewhub update-check                                      # is there a newer release? (checks once a day)
 ```
 
 It uses `GITHUB_TOKEN`, or your `gh auth login`.

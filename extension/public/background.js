@@ -16,3 +16,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type !== "open-review" || typeof message.pr !== "string") return;
   chrome.tabs.create({ url: reviewUrl(message.pr), index: (sender.tab?.index ?? 0) + 1 });
 });
+
+// Chrome Web Store installs update themselves, but Chrome only switches to the
+// new version once the extension is idle; apply it as soon as it's downloaded.
+chrome.runtime.onUpdateAvailable.addListener(() => chrome.runtime.reload());

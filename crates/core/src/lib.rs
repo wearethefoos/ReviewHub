@@ -14,3 +14,4 @@ pub mod model;
 pub mod reports;
 pub mod review;
 pub mod secrets;
+pub mod update;

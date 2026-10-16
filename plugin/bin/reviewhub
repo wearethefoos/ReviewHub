@@ -16,6 +16,8 @@
 #   REVIEWHUB_RELEASE_BASE_URL  base URL of the release downloads (mirrors, testing)
 #   GITHUB_TOKEN / GH_TOKEN     used when the release can't be downloaded anonymously
 #                               (private repository); `gh auth token` is tried too
+#   REVIEWHUB_CACHED_ONLY=1     exit quietly instead of downloading when the CLI isn't
+#                               installed yet (for hooks that mustn't wait on a download)
 set -eu
 
 if [ -n "${REVIEWHUB_BIN:-}" ]; then
@@ -123,6 +125,10 @@ sha256() {
   fi
 }
 
+if [ ! -x "$bin" ] && [ -n "${REVIEWHUB_CACHED_ONLY:-}" ]; then
+  exit 0
+fi
+
 if [ ! -x "$bin" ]; then
   mkdir -p "$cache"
   tmp=$(mktemp -d "$cache/.download.XXXXXX")
@@ -135,7 +141,7 @@ if [ ! -x "$bin" ]; then
     previous=$(ls -d "$cache"/v*/ 2>/dev/null | sed 's|/$||; s|.*/v||' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
     if [ -n "$previous" ] && [ -x "$cache/v$previous/reviewhub$exe" ]; then
       echo "reviewhub: v$version isn't downloadable yet (a new release takes a few minutes to build); using v$previous for now." >&2
-      exec "$cache/v$previous/reviewhub$exe" "$@"
+      REVIEWHUB_PINNED_VERSION="$version" exec "$cache/v$previous/reviewhub$exe" "$@"
     fi
     fail "couldn't download SHA256SUMS of v$version. A new release takes a few minutes to build; if this persists, check that v$version is released. For a local build, set REVIEWHUB_BIN."
   fi
@@ -156,4 +162,6 @@ if [ ! -x "$bin" ]; then
 fi
 
 touch "$cache/v$version" 2>/dev/null || true
+# The version that is installed, even when an older CLI stands in for it (update checks compare with this).
+export REVIEWHUB_PINNED_VERSION="$version"
 exec "$bin" "$@"

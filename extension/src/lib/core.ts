@@ -85,3 +85,9 @@ export function annotationComment(path: string, annotation: Annotation, hunks: H
 export function authorReviewBody(verdict: AuthorVerdict, body: string, lineComments: number): string {
   return wasm.authorReviewBody(JSON.stringify(verdict), body, lineComments);
 }
+
+/** What to tell the user when `latest` is newer than `current`, for this kind of install; null when up to date. */
+export async function updateNotice(install: "extension-unpacked", current: string, latest: string): Promise<string | null> {
+  await loadCore();
+  return wasm.updateNotice(install, current, latest) ?? null;
+}
