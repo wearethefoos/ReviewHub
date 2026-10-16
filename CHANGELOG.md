@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/wearethefoos/ReviewHub/compare/v0.6.0...v0.7.0) (2026-10-16)
+
+
+### Features
+
+* **extension:** let authors review their own pull requests ([#20](https://github.com/wearethefoos/ReviewHub/issues/20)) ([28f2dec](https://github.com/wearethefoos/ReviewHub/commit/28f2decf40ed2c938b947f36217dfab6a1825172))
+* tell users when a newer ReviewHub release is out, and how to update ([#18](https://github.com/wearethefoos/ReviewHub/issues/18)) ([5b88757](https://github.com/wearethefoos/ReviewHub/commit/5b8875772d9262e2cf9ec423e49a96c2bb39266d))
+
 ## [0.6.0](https://github.com/wearethefoos/ReviewHub/compare/v0.5.1...v0.6.0) (2026-10-15)
 
 
