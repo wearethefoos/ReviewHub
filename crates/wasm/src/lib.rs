@@ -86,6 +86,13 @@ pub fn selection_target(hunk: &str, from: usize, to: usize) -> Result<String, Js
     Ok(json!(reviewhub_core::review::selection_target(&hunk, from, to)).to_string())
 }
 
+/// What to tell a user of this kind of install (`plugin`, `repo`, `cli`, `extension-unpacked`) when `latest` is
+/// newer than `current`, or `undefined`.
+#[wasm_bindgen(js_name = updateNotice)]
+pub fn update_notice(install: &str, current: &str, latest: &str) -> Option<String> {
+    reviewhub_core::update::notice(reviewhub_core::update::Install::parse(install)?, current, latest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,5 +164,15 @@ mod tests {
             serde_json::from_str(&annotation_comment("a.ts", &annotation.to_string(), &hunks.to_string()).unwrap())
                 .unwrap();
         assert!(draft["body"].as_str().unwrap().contains("Untested"), "{draft}");
+    }
+
+    #[test]
+    fn update_notice_knows_the_install_kinds() {
+        let notice = update_notice("extension-unpacked", "0.5.0", "v0.6.0").unwrap();
+        assert!(
+            notice.starts_with("ReviewHub 0.6.0 is available (you have 0.5.0).") && notice.contains("chromewebstore")
+        );
+        assert_eq!(update_notice("extension-unpacked", "0.6.0", "v0.6.0"), None);
+        assert_eq!(update_notice("browser", "0.5.0", "v0.6.0"), None);
     }
 }

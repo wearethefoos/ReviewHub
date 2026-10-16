@@ -6,6 +6,7 @@ ReviewHub (the Chrome extension, the website and web app at wearethefoos.github.
 
 - **Pull request data.** To show a review, the extension reads the pull request, its changed files, its comments and report files from the GitHub REST API (`api.github.com`). This data is processed in your browser to render the review page and is not sent anywhere else. The review is kept in memory for the open tab only.
 - **Your GitHub token (optional).** If you add a GitHub token in the settings, it is stored in the extension's local storage (`chrome.storage.local`) in your browser and is only ever sent to `api.github.com`, to authenticate the requests above.
+- **Update check (unpacked installs only).** A copy loaded unpacked from a release zip asks `api.github.com` for the latest ReviewHub release once a day, to tell you when to update. Chrome Web Store installs don't; Chrome updates them.
 - **Settings and checklist state.** The logins you choose to trust, and the rollout steps you tick off, are stored in your browser's local storage.
 - **The GitHub page you are on.** On github.com, the extension checks the page address to decide whether to show the **Open in ReviewHub** button on pull requests. It does not read or record the page's content.
 

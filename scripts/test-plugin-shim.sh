@@ -72,5 +72,13 @@ check "while a new release is still building, runs the newest installed version"
 check "without installing anything for it" test ! -e "$tmp/cache/v9.9.9/reviewhub"
 fails "fails clearly for an unreleased version when nothing is installed" env REVIEWHUB_CACHE_DIR="$tmp/empty-cache" "$tmp/plugin/bin/reviewhub" --version
 check "REVIEWHUB_BIN overrides the download" env REVIEWHUB_BIN="$binary" "$tmp/plugin/bin/reviewhub" --version
+check "REVIEWHUB_CACHED_ONLY exits quietly when nothing is installed" test -z "$(REVIEWHUB_CACHED_ONLY=1 REVIEWHUB_CACHE_DIR="$tmp/empty-cache2" "$tmp/plugin/bin/reviewhub" --version)"
+check "without downloading anything" test ! -e "$tmp/empty-cache2/v9.9.9"
+# The update check compares the latest release with the plugin's version, not the stand-in CLI's.
+now=$(date +%s)
+echo "{\"tag\":\"v9.9.9\",\"checked\":$now}" > "$tmp/cache/latest-release.json"
+check "no update notice when the plugin is current, even on a stand-in CLI" test -z "$("$tmp/plugin/bin/reviewhub" update-check --for plugin --hook 2>/dev/null)"
+echo "{\"tag\":\"v10.0.0\",\"checked\":$now}" > "$tmp/cache/latest-release.json"
+check "an update notice for the plugin when a newer release is out" grep -q "ReviewHub 10.0.0 is available (you have 9.9.9)" <("$tmp/plugin/bin/reviewhub" update-check --for plugin --hook 2>/dev/null)
 
 [ "$failures" -eq 0 ]
