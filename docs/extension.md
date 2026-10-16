@@ -71,7 +71,7 @@ When an agent wrote the pull request under your account, you're its author, and 
 - **Request changes** posts a comment that starts with **Changes requested by the author** and asks the agent working on the pull request to make the changes in it and in your line comments, then push an update.
 - **Approve** asks what's next. **Merge it now** merges the pull request (choose merge, squash or rebase, as the repository allows), then posts your approval and line comments. **Don't merge yet** posts your approval with the reason it should wait, such as "after the mobile release".
 
-The merge only goes through if the pull request's head is still the commit you reviewed; if the agent pushed since, reload and review the new commits. If GitHub refuses the merge (failing required checks, branch protection), nothing is posted. Each comment starts with a hidden `<!-- reviewhub-author-review: … -->` marker, so tools can tell what you decided.
+The merge only goes through if the pull request's head is still the commit you reviewed; if the agent pushed since, reload and review the new commits. If GitHub refuses the merge (failing required checks, branch protection), nothing is posted. Each comment starts with a hidden `<!-- reviewhub-author-review: … -->` marker, so tools can tell what you decided. Anyone who can comment can write that marker too, so a tool must only trust it on a comment by the pull request's author.
 
 Pending comments are kept in this browser per pull request until you submit them. Comments written before the pull request got new commits are marked **Outdated** and aren't submitted.
 

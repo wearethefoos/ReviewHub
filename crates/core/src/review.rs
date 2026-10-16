@@ -229,6 +229,8 @@ pub enum AuthorVerdict {
 
 /// The body of an author's review: what they decided, then their own comment. `line_comments` is how many comments
 /// on the diff go with it. Starts with a hidden marker (`<!-- reviewhub-author-review: … -->`) for tools.
+/// Anyone who can comment can write the same marker and text: tools must only act on it when the comment's or
+/// review's `user.login` is the pull request's author.
 pub fn author_review_body(verdict: &AuthorVerdict, body: &str, line_comments: usize) -> String {
     const NOTE: &str = "GitHub doesn't let authors approve or request changes on their own pull requests, so this is a \
                         comment.";
