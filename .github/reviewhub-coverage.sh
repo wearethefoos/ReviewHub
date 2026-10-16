@@ -14,7 +14,14 @@ status=0
 # Rust
 (cargo llvm-cov --workspace --lcov --output-path "$out/rust.info") || status=1
 
-# JavaScript/TypeScript (Vitest): extension
-(cd extension && npm ci && npm install --no-save "@vitest/coverage-v8@$(node -p "require('vitest/package.json').version")" && npx vitest run --coverage --coverage.reporter=lcov --coverage.reportsDirectory="$out/node-extension") || status=1
+# JavaScript/TypeScript (Vitest): extension. Its tests load the reviewhub-core wasm module, so build that first
+# (with the wasm target and the wasm-bindgen version Cargo.lock pins, installed if missing).
+(
+  rustup target add wasm32-unknown-unknown &&
+    want=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version') &&
+    { [ "$(wasm-bindgen --version 2>/dev/null | cut -d ' ' -f 2)" = "$want" ] || cargo install wasm-bindgen-cli --locked --version "$want"; } &&
+    cd extension && npm ci && npm run wasm &&
+    npx vitest run --coverage --coverage.reporter=lcov --coverage.reportsDirectory="$out/node-extension"
+) || status=1
 [ -f "$out/node-extension/lcov.info" ] && mv "$out/node-extension/lcov.info" "$out/node-extension.info"
 exit $status
