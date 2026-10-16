@@ -43,9 +43,8 @@ fn latest_release() -> Option<String> {
     {
         return c["tag"].as_str().map(String::from);
     }
-    let tag = GitHub::with_timeout(crate::github::resolve_token(), Some(Duration::from_secs(3)))
-        .latest_reviewhub_release()
-        .ok();
+    // The releases endpoint is public: don't read or send the user's GitHub token for a background check.
+    let tag = GitHub::with_timeout(None, Some(Duration::from_secs(3))).latest_reviewhub_release().ok();
     match (&tag, &cache) {
         (Some(tag), Some(file)) => {
             if let Some(dir) = file.parent() {
