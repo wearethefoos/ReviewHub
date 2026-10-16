@@ -9,7 +9,11 @@ Makes Claude a good citizen of a ReviewHub workflow: it publishes its own accoun
 /plugin install reviewhub@reviewhub
 ```
 
-The skills use the `reviewhub` CLI, which comes with the plugin: `bin/reviewhub` downloads the release binary matching the plugin's version from [GitHub releases](https://github.com/wearethefoos/ReviewHub/releases) on first use (a session start hook does it in the background), checks it against the release's `SHA256SUMS`, and keeps it in the plugin's data directory (or `~/.cache/reviewhub`). When the plugin updates, the next run fetches the matching binary and removes the old one. Supported: Linux (x86-64, ARM64), macOS (Intel, Apple Silicon), Windows (x86-64, through Git Bash). It needs `curl` or `wget`, and `sha256sum` or `shasum`.
+The skills use the `reviewhub` CLI, which comes with the plugin: `bin/reviewhub` downloads the release binary matching the plugin's version from [GitHub releases](https://github.com/wearethefoos/ReviewHub/releases) on first use (a session start hook does it in the background), checks it against the release's `SHA256SUMS`, and keeps it in the plugin's data directory (or `~/.cache/reviewhub`). When the plugin updates, the next run fetches the matching binary and removes the old one.
+
+### Updating
+
+Third-party marketplaces don't auto-update in Claude Code by default, so a session start hook checks GitHub once a day and tells you when a newer release is out. To update: `/plugin marketplace update reviewhub`, then `/plugin` → Installed → reviewhub → **Update now**, and `/reload-plugins` (in a shell: `claude plugin marketplace update reviewhub && claude plugin update reviewhub@reviewhub`). To get updates automatically, open `/plugin` → Marketplaces → reviewhub → **Enable auto-update**. Set `REVIEWHUB_NO_UPDATE_CHECK=1` to turn the check off; it is also off when `DISABLE_UPDATES` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. Supported: Linux (x86-64, ARM64), macOS (Intel, Apple Silicon), Windows (x86-64, through Git Bash). It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 
 The CLI reads GitHub with `GITHUB_TOKEN`, or your `gh auth login`.
 

@@ -46,10 +46,16 @@ struct Comment {
 
 impl GitHub {
     pub fn new(token: Option<String>) -> Self {
+        Self::with_timeout(token, None)
+    }
+
+    /// A client whose requests give up after `timeout` (for checks that mustn't hold anything up).
+    pub fn with_timeout(token: Option<String>, timeout: Option<std::time::Duration>) -> Self {
         let config = ureq::Agent::config_builder()
             .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
             .user_agent("reviewhub-cli")
             .http_status_as_error(false)
+            .timeout_global(timeout)
             .build();
         let api = std::env::var("GITHUB_API_URL").unwrap_or_else(|_| "https://api.github.com".into());
         GitHub { agent: config.new_agent(), api: api.trim_end_matches('/').to_string(), token }
@@ -136,6 +142,12 @@ impl GitHub {
             report_files,
             trusted_authors,
         }))
+    }
+
+    /// Tag of the latest ReviewHub release, e.g. `v0.6.0`.
+    pub fn latest_reviewhub_release(&self) -> Result<String> {
+        let release = self.get("/repos/wearethefoos/ReviewHub/releases/latest")?;
+        release["tag_name"].as_str().map(String::from).ok_or_else(|| anyhow!("the latest release has no tag"))
     }
 
     /// The pull request's head commit.

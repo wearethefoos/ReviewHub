@@ -8,6 +8,7 @@ mod metrics;
 mod push;
 mod render;
 mod stacks;
+mod updates;
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,11 @@ use reviewhub_core::model::{Coverage, MetricsReport, PullRequestBundle, ReportVe
 use reviewhub_core::reports::{self, Kind, Report};
 
 use crate::github::GitHub;
+
+fn parse_install(s: &str) -> Result<reviewhub_core::update::Install, String> {
+    reviewhub_core::update::Install::parse(s)
+        .ok_or_else(|| "expected one of: plugin, repo, cli, extension-unpacked".into())
+}
 
 fn parse_kind(s: &str) -> Result<Kind, String> {
     Kind::parse(s).ok_or_else(|| format!("expected one of: {}", Kind::ALL.map(Kind::as_str).join(", ")))
@@ -132,6 +138,20 @@ when the ReviewHub security review workflow reviews it (unless --force). Needs C
         /// Review even if CI does or a report for the head commit exists
         #[arg(long)]
         force: bool,
+    },
+    /// Say whether a newer ReviewHub release exists and how to update this install
+    #[command(
+        after_help = "Checks GitHub at most once a day (the answer is cached). Prints nothing when up to date or \
+offline. Set REVIEWHUB_NO_UPDATE_CHECK=1 to turn it off; DISABLE_UPDATES and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
+turn it off too."
+    )]
+    UpdateCheck {
+        /// How ReviewHub was installed: plugin, repo (reviewhub init), cli or extension-unpacked
+        #[arg(long = "for", value_name = "INSTALL", default_value = "cli", value_parser = parse_install)]
+        install: reviewhub_core::update::Install,
+        /// Print Claude Code SessionStart hook output (JSON) instead of text
+        #[arg(long)]
+        hook: bool,
     },
     /// The git pre-push hook installed by `reviewhub init` (reads git's pre-push input on stdin)
     #[command(hide = true)]
@@ -388,6 +408,7 @@ fn run(cli: Cli) -> Result<()> {
                 println!("{message}");
             }
         }
+        Cmd::UpdateCheck { install, hook } => updates::check(install, hook),
         Cmd::SecurityReview { pr, sha, force } => push::security_review(&pr, sha.as_deref(), force)?,
         Cmd::PrePush { url, .. } => {
             let mut input = String::new();

@@ -8,7 +8,7 @@ It works in Chrome and other Chromium browsers (Edge, Brave, Arc). Not on a comp
 
 Install [ReviewHub from the Chrome Web Store](https://chromewebstore.google.com/detail/reviewhub/eoejgblmpnccaaohifkeajpblaidgnjo) and click **Add to Chrome**. Optionally pin it from the puzzle-piece menu so its toolbar button is always visible.
 
-The extension asks for access to `github.com` (to add the **Open in ReviewHub** button to pull requests) and `api.github.com` (to read pull requests and reports). It updates itself when a new version is released.
+The extension asks for access to `github.com` (to add the **Open in ReviewHub** button to pull requests) and `api.github.com` (to read pull requests and reports). It updates itself: Chrome checks the store every few hours and ReviewHub switches to a new version as soon as it's downloaded.
 
 ### Without the Chrome Web Store
 
@@ -19,7 +19,7 @@ To run a specific version, or a build that isn't in the store yet:
 3. Open `chrome://extensions` (in Edge: `edge://extensions`) and turn on **Developer mode** (top right).
 4. Click **Load unpacked** and choose the unzipped folder (the one containing `manifest.json`).
 
-Extensions loaded this way don't update themselves: to update, unzip the new release over the same folder and click the reload icon on the ReviewHub card. Chrome identifies an unpacked extension by its folder, so loading a different folder installs a separate copy without your settings. Remove an unpacked copy before installing from the store, or you'll have two **Open in ReviewHub** buttons.
+Extensions loaded this way don't update themselves, so ReviewHub shows a banner when a newer release is out (it checks GitHub once a day; dismiss it until the next release with ×). To update, unzip the new release over the same folder and click the reload icon on the ReviewHub card. Chrome identifies an unpacked extension by its folder, so loading a different folder installs a separate copy without your settings. Remove an unpacked copy before installing from the store, or you'll have two **Open in ReviewHub** buttons.
 
 ## Set up a token (optional)
 
