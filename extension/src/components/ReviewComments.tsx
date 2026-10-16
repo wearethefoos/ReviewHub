@@ -5,8 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { annotationComment, authorReviewBody, findingComment } from "@/lib/core";
 import { type Composing, type Draft, useDrafts } from "@/lib/drafts";
 import { createClient, GitHubError, type MergeMethod, type ReviewEvent } from "@/lib/github";
-import { loadSettings, openSettings } from "@/lib/settings";
-import type { AuthorVerdict, CommentTarget, LineAnnotation, SecurityFinding } from "@/lib/types";
+import { useRoute } from "@/lib/router";
+import { EXTENSION_URL, loadSettings, openSettings } from "@/lib/settings";
+import type { AuthorVerdict, CommentTarget, LineAnnotation, PullRequestInfo, SecurityFinding } from "@/lib/types";
 import { Markdown } from "./Markdown";
 import { Box, Counter, Label } from "./ui";
 
@@ -184,9 +185,45 @@ function useAuthorship(open: boolean, pr: { owner: string; repo: string; number:
   return authorship;
 }
 
+/** In the web app and on the demo, where reviews can't be submitted: the same button, saying where you can review. */
+function ReviewElsewhere({ pr, demo }: { pr: PullRequestInfo; demo: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button type="button" className={PRIMARY} onClick={() => setOpen(!open)} aria-expanded={open}>
+        Review changes
+        <TriangleDownIcon size={14} />
+      </button>
+      {open && (
+        <Box className="absolute right-0 z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] p-3 text-sm shadow-lg">
+          {demo ? (
+            <p>This is a demo pull request, so there&apos;s nothing to review on GitHub. Open one of your own pull requests to comment, approve or request changes.</p>
+          ) : (
+            <>
+              <p>
+                Reviewing from ReviewHub (line comments, Comment, Approve and Request changes, and merging your own pull requests) works in the Chrome extension,
+                which keeps your GitHub token out of reach of other websites.
+              </p>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <a href={`${pr.htmlUrl}/files`} target="_blank" rel="noreferrer" className={BUTTON}>
+                  Review on GitHub
+                </a>
+                <a href={EXTENSION_URL} target="_blank" rel="noreferrer" className={PRIMARY}>
+                  Get the extension
+                </a>
+              </div>
+            </>
+          )}
+        </Box>
+      )}
+    </div>
+  );
+}
+
 /** The "Review changes" button and its panel, in the pull request header. */
-export function ReviewPanel() {
+export function ReviewPanel({ pr: info }: { pr: PullRequestInfo }) {
   const drafts = useDrafts();
+  const route = useRoute();
   const [open, setOpen] = useState(false);
   const [event, setEvent] = useState<ReviewEvent>("COMMENT");
   const [mergeNow, setMergeNow] = useState(true);
@@ -196,7 +233,7 @@ export function ReviewPanel() {
     status: "idle",
   });
   const authorship = useAuthorship(open, drafts?.pr ?? { owner: "", repo: "", number: 0, author: { login: "" } });
-  if (!drafts) return null;
+  if (!drafts) return <ReviewElsewhere pr={info} demo={route.demo} />;
   const { pr, current, drafts: all, body } = drafts;
   const outdated = all.length - current.length;
   const empty = !body.trim() && current.length === 0;

@@ -30,8 +30,9 @@ describe("the demo", () => {
     await shows(demo.pr.title);
     await shows("Read 4 of 12 files closely");
     expect(screen.getByText("Also make sure retries from the merchant's side don't create duplicate refunds.")).toBeTruthy();
-    // No reviewing in the web app or on the demo.
-    expect(screen.queryByText("Review changes")).toBeNull();
+    // There's nothing to review on the demo; the button says so.
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Review changes/ })));
+    await shows("This is a demo pull request");
   });
 
   it.each([
@@ -87,7 +88,17 @@ describe("pull requests from GitHub", () => {
     expect(github.calls.length).toBeGreaterThan(before);
   });
 
-  it("sends the saved token, and explains errors", async () => {
+  it("points to the extension or GitHub for reviewing", async () => {
+    vi.stubGlobal("fetch", fakeGitHub().fetch);
+    open("?pr=o%2Fr%237");
+    await shows(demo.pr.title);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Review changes/ })));
+    await shows("works in the Chrome extension");
+    expect(screen.getByRole("link", { name: "Review on GitHub" }).getAttribute("href")).toBe("https://github.com/o/r/pull/7/files");
+    expect(screen.getByRole("link", { name: "Get the extension" }).getAttribute("href")).toContain("chromewebstore.google.com");
+  });
+
+    it("sends the saved token, and explains errors", async () => {
     sessionStorage.setItem("reviewhub:settings", JSON.stringify({ token: "t0ken" }));
     // Reviews are kept per pull request for the page's lifetime, so this uses another one.
     const github = fakeGitHub({ "GET https://api.github.com/repos/o/r/pulls/8": () => new Response("{}", { status: 401 }) });

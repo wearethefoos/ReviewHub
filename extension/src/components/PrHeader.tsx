@@ -53,7 +53,7 @@ export function PrHeader({ pr, active, counts }: { pr: PullRequestInfo; active: 
                 View on GitHub <LinkExternalIcon size={14} />
               </a>
             )}
-            <ReviewPanel />
+            <ReviewPanel pr={pr} />
           </span>
         </div>
         <nav aria-label="Review sections" className="-mb-px mt-4 flex gap-1 overflow-x-auto">
