@@ -1,6 +1,6 @@
 # ReviewHub security review: an independent Claude Code agent reviews every
 # pull request for security problems and publishes a ReviewHub security report.
-# Installed by `reviewhub init` (ReviewHub 0.5.0); re-run it to update.
+# Installed by `reviewhub init` (ReviewHub 0.6.0); re-run it to update.
 #
 # Runs only when the repository has an ANTHROPIC_API_KEY or
 # CLAUDE_CODE_OAUTH_TOKEN secret (each run uses API credits or your Claude
@@ -60,10 +60,10 @@ jobs:
           fetch-depth: 0
       - name: Install the ReviewHub CLI
         env:
-          REVIEWHUB_VERSION: "0.5.0"
+          REVIEWHUB_VERSION: "0.6.0"
           REVIEWHUB_INSTALL_DIR: ${{ runner.temp }}/reviewhub
         run: |
-          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v0.5.0/install.sh | sh
+          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v0.6.0/install.sh | sh
           echo "$RUNNER_TEMP/reviewhub" >>"$GITHUB_PATH"
       - name: Prepare the reviewer's instructions
         id: prompt
@@ -118,10 +118,10 @@ jobs:
           name: reviewhub-security
       - name: Install the ReviewHub CLI
         env:
-          REVIEWHUB_VERSION: "0.5.0"
+          REVIEWHUB_VERSION: "0.6.0"
           REVIEWHUB_INSTALL_DIR: ${{ runner.temp }}/reviewhub
         run: |
-          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v0.5.0/install.sh | sh
+          curl -fsSL https://raw.githubusercontent.com/wearethefoos/ReviewHub/v0.6.0/install.sh | sh
           echo "$RUNNER_TEMP/reviewhub" >>"$GITHUB_PATH"
       # Comments posted with the workflow token don't trigger the briefing
       # workflow, so refresh the briefing here.

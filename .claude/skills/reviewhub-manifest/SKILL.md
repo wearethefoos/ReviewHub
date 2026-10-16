@@ -2,7 +2,7 @@
 name: reviewhub-manifest
 description: Write and publish a ReviewHub review manifest for a pull request you authored. Use right after you open or update a pull request in a repository that uses ReviewHub (its CLAUDE.md mentions ReviewHub), or when the user asks for a review manifest.
 argument-hint: "[owner/repo#number]"
-allowed-tools: Bash(reviewhub *), Bash(gh pr view *), Bash(git log *), Bash(git diff *)
+allowed-tools: Bash(reviewhub *), Bash(gh pr view *), Bash(git log *), Bash(git diff *), Bash(mktemp *)
 ---
 
 # Review manifest
@@ -15,7 +15,7 @@ Only publish when the repository opts in (its `CLAUDE.md` or `AGENTS.md` mention
 
 1. **Find the pull request.** Use `$ARGUMENTS` if given (`owner/repo#123` or a URL). Otherwise use the pull request you just opened, or `gh pr view --json number,url,headRefOid`.
 2. **Get the schema** with `reviewhub schema manifest` if you don't know it.
-3. **Write the manifest** to a file outside the repository, such as `$TMPDIR/reviewhub-manifest.json`, following the rules below. Use `git diff <base>...HEAD` to get line numbers in the new version of each file.
+3. **Write the manifest** to a file outside the repository, created with `mktemp "${TMPDIR:-/tmp}/reviewhub-manifest.XXXXXX"` (not a fixed name in a shared temp directory), following the rules below. Use `git diff <base>...HEAD` to get line numbers in the new version of each file.
 4. **Validate** with `reviewhub validate manifest <file>` and fix every error.
 5. **Publish** with `reviewhub publish manifest <file> --repo <owner/repo> --pr <number>`. It updates your earlier manifest comment if there is one, so republish whenever you push changes that affect it.
 6. **Tell the user** the comment URL and, in one or two lines, the deviations, high-impact decisions and blocking gaps you reported.
