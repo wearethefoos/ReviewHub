@@ -213,6 +213,52 @@ fn fence_for(text: &str) -> String {
     "`".repeat(longest.max(2) + 1)
 }
 
+/// The verdict of a reviewer who is also the pull request's author. GitHub doesn't let authors approve or request
+/// changes on their own pull requests, so these are submitted as comments that say what the author decided.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum AuthorVerdict {
+    /// The author wants the agent to make changes before merging.
+    RequestChanges,
+    /// Approved, and merged right away.
+    ApproveAndMerge,
+    /// Approved, but it can't or shouldn't be merged yet, for `reason`.
+    ApproveNotYet { reason: String },
+}
+
+/// The body of an author's review: what they decided, then their own comment. `line_comments` is how many comments
+/// on the diff go with it. Starts with a hidden marker (`<!-- reviewhub-author-review: … -->`) for tools.
+pub fn author_review_body(verdict: &AuthorVerdict, body: &str, line_comments: usize) -> String {
+    const NOTE: &str = "GitHub doesn't let authors approve or request changes on their own pull requests, so this is a \
+                        comment.";
+    let on_diff = match line_comments {
+        0 => String::new(),
+        1 => " and in the comment on the diff".to_string(),
+        n => format!(" and in the {n} comments on the diff"),
+    };
+    let (marker, decision) = match verdict {
+        AuthorVerdict::RequestChanges => (
+            "changes-requested",
+            format!(
+                "**Changes requested** by the author. To the agent working on this pull request: make the changes \
+                 asked for here{on_diff}, then push an update. {NOTE}"
+            ),
+        ),
+        AuthorVerdict::ApproveAndMerge => ("approved", format!("**Approved and merged** by the author. {NOTE}")),
+        AuthorVerdict::ApproveNotYet { reason } => (
+            "approved-not-merged",
+            format!("**Approved** by the author, but not to be merged yet: {}\n\n{NOTE}", reason.trim()),
+        ),
+    };
+    let mut out = format!("<!-- reviewhub-author-review: {marker} -->\n{decision}");
+    if !body.trim().is_empty() {
+        out.push_str("\n\n");
+        out.push_str(body.trim());
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,5 +366,34 @@ mod tests {
     fn fences_outgrow_backticks_in_the_code() {
         assert_eq!(fence_for("plain"), "```");
         assert_eq!(fence_for("a ``` b"), "````");
+    }
+
+    #[test]
+    fn says_what_an_author_decided() {
+        let changes = author_review_body(&AuthorVerdict::RequestChanges, " Rename the flag. ", 2);
+        assert!(
+            changes.starts_with(
+                "<!-- reviewhub-author-review: changes-requested -->\n**Changes requested** by the author."
+            )
+        );
+        assert!(
+            changes.contains("make the changes asked for here and in the 2 comments on the diff, then push an update")
+        );
+        assert!(changes.ends_with("comment.\n\nRename the flag."), "{changes}");
+        assert!(author_review_body(&AuthorVerdict::RequestChanges, "", 1).contains("and in the comment on the diff,"));
+        assert!(author_review_body(&AuthorVerdict::RequestChanges, "x", 0).contains("asked for here, then"));
+
+        let merged = author_review_body(&AuthorVerdict::ApproveAndMerge, "", 0);
+        assert!(
+            merged.starts_with("<!-- reviewhub-author-review: approved -->\n**Approved and merged** by the author.")
+        );
+        assert!(merged.ends_with("so this is a comment."), "{merged}");
+
+        let held = AuthorVerdict::ApproveNotYet { reason: " Wait for the mobile release. ".into() };
+        let held = author_review_body(&held, "Nice work.", 0);
+        assert!(
+            held.contains("**Approved** by the author, but not to be merged yet: Wait for the mobile release.\n\n")
+        );
+        assert!(held.ends_with("comment.\n\nNice work."), "{held}");
     }
 }

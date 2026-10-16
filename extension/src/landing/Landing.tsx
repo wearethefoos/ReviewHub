@@ -196,7 +196,8 @@ export function Landing() {
           >
             <p>
               Comment on a line or drag over several, turn any finding into a comment with the fix as a GitHub suggestion, then submit everything as one
-              review: Comment, Approve or Request changes.
+              review: Comment, Approve or Request changes. On a pull request your agent opened under your account, your verdict becomes a comment, and
+              approving can merge it.
             </p>
             <p>Syntax highlighting, dark mode, and the GitHub look you already know.</p>
           </Spotlight>

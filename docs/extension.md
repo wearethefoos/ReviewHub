@@ -29,7 +29,7 @@ Public repositories work without a token, within GitHub's limit of 60 anonymous 
 2. Open the extension's settings: the gear icon on the review page, or right-click the toolbar button → **Options**.
 3. Paste it into **GitHub token** and click **Save and test**. You should see "Signed in as *you*" and how many API requests you have left.
 
-To also comment, approve and request changes from ReviewHub, give the token **Pull requests: Read and write** instead (Contents stays read-only).
+To also comment, approve and request changes from ReviewHub, give the token **Pull requests: Read and write** instead. To merge your own pull requests from ReviewHub (see [Reviewing your own pull request](#reviewing-your-own-pull-request)), also give it **Contents: Read and write**.
 
 The token is kept in the extension's local storage in this browser and is only ever sent to `api.github.com`.
 
@@ -63,6 +63,16 @@ In the extension (not the web app, and not on the demo), you can write a GitHub 
 - **Comment on a finding:** security findings, deviations, decisions and gaps shown on the diff have a **Comment** link that starts a comment with their text. A security finding whose fix fits the diff becomes a GitHub suggestion the author can apply in one click. On the **Security** tab, **Add to review** does the same without opening the editor.
 - **Submit:** **Review changes** in the header shows your pending comments; add an overall comment and choose **Comment**, **Approve** or **Request changes**. Everything goes to GitHub as one review.
 
+### Reviewing your own pull request
+
+When an agent wrote the pull request under your account, you're its author, and GitHub only lets authors comment. ReviewHub notices (it compares the token's login with the author) and posts your verdict as a comment that says what you decided:
+
+- **Comment** works as usual.
+- **Request changes** posts a comment that starts with **Changes requested by the author** and asks the agent working on the pull request to make the changes in it and in your line comments, then push an update.
+- **Approve** asks what's next. **Merge it now** merges the pull request (choose merge, squash or rebase, as the repository allows), then posts your approval and line comments. **Don't merge yet** posts your approval with the reason it should wait, such as "after the mobile release".
+
+The merge only goes through if the pull request's head is still the commit you reviewed; if the agent pushed since, reload and review the new commits. If GitHub refuses the merge (failing required checks, branch protection), nothing is posted. Each comment starts with a hidden `<!-- reviewhub-author-review: … -->` marker, so tools can tell what you decided.
+
 Pending comments are kept in this browser per pull request until you submit them. Comments written before the pull request got new commits are marked **Outdated** and aren't submitted.
 
 A suggested flow: read the Briefing, settle the security findings and deviations, check the decisions you care about, read the **Focus** files in Changes, skim the rest, then work through Rollout.
@@ -87,7 +97,10 @@ A pull request without reports still opens: files are then ranked by coverage, s
 | GitHub refused the request. The token may lack access | Check the token has read access to **Pull requests** and **Contents** for this repository. |
 | Rate limit used up | Wait for the hourly reset, or add a token. |
 | GitHub refused the review. The token needs Pull requests: Read and write | Edit the token's permissions on GitHub (or create a new one) and save it again. |
-| GitHub didn't accept the review: … | GitHub's own reason, for example "Can not approve your own pull request". |
+| GitHub didn't accept the review: … | GitHub's own reason, for example "Can not approve your own pull request" when the token's user opened it but ReviewHub couldn't read the token's login. |
+| GitHub refused the merge. The token needs Contents: Read and write | Give the token **Contents: Read and write** to merge from ReviewHub. |
+| GitHub didn't merge the pull request: … | GitHub's own reason, for example a required check that hasn't passed. Nothing was posted. |
+| The pull request got new commits since you reviewed it | Reload from GitHub and review the new commits before merging. |
 | No **Open in ReviewHub** button | Reload the GitHub tab after installing or updating the extension. The button only shows on pull request pages. |
 | A report shows a red ✗ | It was published but isn't valid; expand **Invalid report** in the sidebar for the error. |
 | "The reports mention files that are not in this diff" | The reports were written for an earlier version of the pull request; ask the agent to republish them. |
