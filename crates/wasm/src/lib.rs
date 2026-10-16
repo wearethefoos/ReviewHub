@@ -85,3 +85,77 @@ pub fn selection_target(hunk: &str, from: usize, to: usize) -> Result<String, Js
     let hunk: reviewhub_core::diff::Hunk = parse(hunk, "hunk")?;
     Ok(json!(reviewhub_core::review::selection_target(&hunk, from, to)).to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DEMO: &str = include_str!("../../../fixtures/demo/bundle.json");
+
+    /// The demo bundle as the raw GitHub responses `review` takes.
+    fn raw_demo() -> Value {
+        let demo: Value = serde_json::from_str(DEMO).unwrap();
+        let pr = &demo["pr"];
+        json!({
+            "owner": "o", "repo": "r", "number": 7,
+            "pull": {
+                "title": pr["title"], "state": "open", "user": { "login": "agent" },
+                "head": { "sha": pr["headSha"], "ref": "feature", "repo": { "name": "r", "owner": { "login": "fork" } } },
+            },
+            "files": demo["files"].as_array().unwrap().iter().map(|f| json!({
+                "filename": f["path"], "status": f["status"], "patch": f["patch"],
+            })).collect::<Vec<_>>(),
+            "comments": [], "reportFiles": {}, "trustedAuthors": [],
+        })
+    }
+
+    // Native tests only reach the success paths: `JsError` needs a JavaScript host.
+
+    #[test]
+    fn reviews_raw_responses_and_saved_bundles() {
+        let out: Value = serde_json::from_str(&review(&raw_demo().to_string()).unwrap()).unwrap();
+        assert_eq!(out["bundle"]["pr"]["owner"], "o");
+        assert_eq!(out["focus"]["files"].as_array().unwrap().len(), out["bundle"]["files"].as_array().unwrap().len());
+
+        let out: Value = serde_json::from_str(&review_saved_bundle(DEMO).unwrap()).unwrap();
+        assert!(out["bundle"]["reports"]["manifest"].is_object());
+        assert!(out["focus"]["files"][0]["tier"].is_string());
+    }
+
+    #[test]
+    fn finds_report_files_on_the_head_repository() {
+        let pull = raw_demo()["pull"].to_string();
+        let [owner, repo, sha] = <[String; 3]>::try_from(head_repo(&pull, "o", "r").unwrap()).unwrap();
+        assert_eq!((owner.as_str(), repo.as_str()), ("fork", "r"));
+        assert_eq!(sha, serde_json::from_str::<Value>(DEMO).unwrap()["pr"]["headSha"]);
+        assert!(report_file_paths().contains(&".reviewhub/manifest.json".to_string()));
+    }
+
+    #[test]
+    fn drafts_comments_on_the_diff() {
+        let diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,3 @@\n const a = 1;\n-const b = 2;\n+const b = 3;\n+const c = 4;\n";
+        let files: Value = serde_json::from_str(&split_diff(diff)).unwrap();
+        assert_eq!(files[0][0], "a.ts");
+        let hunks = &files[0][1];
+
+        let added = &hunks[0]["lines"][3];
+        let target: Value = serde_json::from_str(&line_target(&added.to_string()).unwrap()).unwrap();
+        assert_eq!((target["line"].as_u64(), target["side"].as_str()), (Some(3), Some("RIGHT")));
+        let target: Value = serde_json::from_str(&selection_target(&hunks[0].to_string(), 2, 3).unwrap()).unwrap();
+        assert_eq!((target["startLine"].as_u64(), target["line"].as_u64()), (Some(2), Some(3)));
+
+        let finding = json!({
+            "id": "x", "severity": "high", "category": "injection", "title": "Bad", "description": "Bad thing.",
+            "file": "a.ts", "lines": [3, 3], "suggestion": { "explanation": "Do the safe thing." },
+        });
+        let draft: Value =
+            serde_json::from_str(&finding_comment(&finding.to_string(), &hunks.to_string()).unwrap()).unwrap();
+        assert_eq!((draft["path"].as_str(), draft["target"]["line"].as_u64()), (Some("a.ts"), Some(3)));
+
+        let annotation = json!({ "kind": "gap", "start": 2, "end": 3, "title": "Untested" });
+        let draft: Value =
+            serde_json::from_str(&annotation_comment("a.ts", &annotation.to_string(), &hunks.to_string()).unwrap())
+                .unwrap();
+        assert!(draft["body"].as_str().unwrap().contains("Untested"), "{draft}");
+    }
+}
