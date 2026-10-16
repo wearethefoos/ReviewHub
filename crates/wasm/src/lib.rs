@@ -92,3 +92,18 @@ pub fn selection_target(hunk: &str, from: usize, to: usize) -> Result<String, Js
 pub fn update_notice(install: &str, current: &str, latest: &str) -> Option<String> {
     reviewhub_core::update::notice(reviewhub_core::update::Install::parse(install)?, current, latest)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_notice_knows_the_install_kinds() {
+        let notice = update_notice("extension-unpacked", "0.5.0", "v0.6.0").unwrap();
+        assert!(
+            notice.starts_with("ReviewHub 0.6.0 is available (you have 0.5.0).") && notice.contains("chromewebstore")
+        );
+        assert_eq!(update_notice("extension-unpacked", "0.6.0", "v0.6.0"), None);
+        assert_eq!(update_notice("browser", "0.5.0", "v0.6.0"), None);
+    }
+}

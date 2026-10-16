@@ -1,33 +1,10 @@
-// Extension copies loaded unpacked from a release zip never update themselves
-// (Chrome Web Store installs do). Tells their users when a newer release is out.
+// Tells users of an unpacked copy of the extension when a newer release is out
+// (lib/updates.ts decides when).
 import { XIcon } from "@primer/octicons-react";
 import { useEffect, useState } from "react";
-import { updateNotice } from "@/lib/core";
 import { isExtension } from "@/lib/settings";
+import { chromeUpdateEnv, dismissUpdate, pendingUpdate } from "@/lib/updates";
 import { InlineMarkdown } from "./Markdown";
-
-const DAY = 24 * 60 * 60 * 1000;
-
-interface Cached {
-  tag: string;
-  checked: number;
-}
-
-/** The latest release tag, checked on GitHub at most once a day. */
-async function latestRelease(): Promise<string | null> {
-  const { latestRelease: cached } = (await chrome.storage.local.get("latestRelease")) as { latestRelease?: Cached };
-  if (cached && Date.now() - cached.checked < DAY) return cached.tag;
-  try {
-    const res = await fetch("https://api.github.com/repos/wearethefoos/ReviewHub/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
-    if (!res.ok) return cached?.tag ?? null;
-    const tag = ((await res.json()) as { tag_name?: string }).tag_name;
-    if (!tag) return cached?.tag ?? null;
-    await chrome.storage.local.set({ latestRelease: { tag, checked: Date.now() } satisfies Cached });
-    return tag;
-  } catch {
-    return cached?.tag ?? null;
-  }
-}
 
 export function UpdateBanner() {
   const [notice, setNotice] = useState<{ text: string; tag: string } | null>(null);
@@ -35,16 +12,11 @@ export function UpdateBanner() {
   useEffect(() => {
     if (!isExtension()) return;
     let cancelled = false;
-    (async () => {
-      const self = await chrome.management.getSelf();
-      if (self.installType !== "development") return;
-      const tag = await latestRelease();
-      if (!tag) return;
-      const { dismissedUpdate } = (await chrome.storage.local.get("dismissedUpdate")) as { dismissedUpdate?: string };
-      if (dismissedUpdate === tag) return;
-      const text = await updateNotice("extension-unpacked", chrome.runtime.getManifest().version, tag);
-      if (text && !cancelled) setNotice({ text, tag });
-    })().catch(() => {});
+    pendingUpdate(chromeUpdateEnv())
+      .then((pending) => {
+        if (!cancelled) setNotice(pending);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -63,7 +35,7 @@ export function UpdateBanner() {
           title="Dismiss until the next release"
           className="rounded p-1 text-fg-muted hover:bg-neutral-subtle"
           onClick={() => {
-            void chrome.storage.local.set({ dismissedUpdate: notice.tag });
+            void dismissUpdate(chromeUpdateEnv(), notice.tag);
             setNotice(null);
           }}
         >
