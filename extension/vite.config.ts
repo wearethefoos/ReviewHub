@@ -48,6 +48,15 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    test: { include: ["src/**/*.test.ts"] },
+    test: {
+      include: ["src/**/*.test.{ts,tsx}"],
+      // Rendering the whole review page under jsdom (and coverage) takes seconds on a slow runner.
+      testTimeout: 30_000,
+      // Count every source file, not only the ones a test imports; leave out generated code and entry points.
+      coverage: {
+        include: ["src/**/*.{ts,tsx}"],
+        exclude: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/generated/**", "src/wasm/**", "src/**/main.tsx", "src/lib/types.ts"],
+      },
+    },
   };
 });
