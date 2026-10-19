@@ -429,9 +429,10 @@ fn agent_pushes_get_security_reviewed() {
         assert!(output.status.success(), "a push is never blocked");
         stderr(&output)
     };
-    assert!(
-        pre_push(&[("CLAUDECODE", "1")], SAFE_PATH).contains("Review o/r#7 and write the ReviewHub security report.")
-    );
+    // In a Claude Code session: the session runs the headless review, which publishes, and doesn't review itself.
+    let told = pre_push(&[("CLAUDECODE", "1")], SAFE_PATH);
+    assert!(told.contains("run `reviewhub security-review o/r#7` in the background"), "{told}");
+    assert!(told.contains("Don't review the change or publish a security report yourself."), "{told}");
     assert_eq!(pre_push(&[("CI", "true")], SAFE_PATH), "");
     // From a terminal without Claude Code installed: says how to get the review instead.
     assert!(pre_push(&[], SAFE_PATH).contains("couldn't be started: Claude Code (`claude`) isn't installed"));

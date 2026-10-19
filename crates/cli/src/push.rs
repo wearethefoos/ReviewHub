@@ -68,28 +68,21 @@ fn caller() -> Caller {
     }
 }
 
-/// How a Claude Code session gets a pull request security-reviewed without reviewing it itself. The session launches
-/// the batch reviewers (subagents can't always launch their own), passing on only the CLI's own instructions.
+/// How a Claude Code session gets a pull request security-reviewed without reviewing it itself: `security-review`
+/// runs a separate, headless Claude Code reviewer that launches its own batch reviewers and publishes its report, so
+/// the session that wrote the change never handles a review's reports.
 pub fn session_review_steps(pr: &str) -> String {
     format!(
-        "run `reviewhub security-plan {pr}`. If its `mode` is `batched`, launch one general-purpose subagent per batch, \
-         all in one message, each with exactly its batch's `prompt` and on its `model`, and wait for them. When \
-         all have returned, save each batch's reply as it is: the report JSON to its `output`, the lines after \
-         `NOTES:` to its `notes` (`{{}}` and `none` for a batch without a report). Then launch \
-         the security-reviewer subagent on the plan's `coordinatorModel` with only the instruction \"Review {pr} and \
-         write the ReviewHub security report.\", adding \"The batch reviews are done: <the plan's planFile>.\" when \
-         batched. Don't pass on your own view of the change. Run `reviewhub validate security <file>` on the report it \
-         writes and `reviewhub publish security <file> --repo <owner/repo> --pr <number>`, without editing its \
-         findings."
+        "run `reviewhub security-review {pr}` in the background (it takes several minutes; don't run it with a short \
+         timeout). It does nothing when a CI workflow reviews the pull request or its head already has a report; \
+         otherwise an independent headless Claude Code reviewer reviews it and the command publishes the report. \
+         Don't review the change or publish a security report yourself. When it finishes, check it printed \
+         `Published the security report` or why it didn't; if it failed, tell the user."
     )
 }
 
 pub fn agent_instructions(pr: &str) -> String {
-    format!(
-        "Run `reviewhub security-status {pr}` once the push is on GitHub. If it prints `ci`, a workflow reviews it. \
-         If it prints `session`: {}",
-        session_review_steps(pr)
-    )
+    format!("Once the push is on GitHub, {}", session_review_steps(pr))
 }
 
 /// Makes sure `repo#pr` (at `sha`, once pushed) gets a security review, in the way that fits where this runs.

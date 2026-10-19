@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Independent security review of a pull request for ReviewHub. Use when asked to security-review a pull request, or by the security-review skill. Give it the pull request (owner/repo#number). It did not write the code and does not trust the author's claims about it.
+description: Independent security review of a pull request for ReviewHub. Run headless by `reviewhub security-review` (the security-review skill and the PR-created hook use it) and by the CI workflow. Give it the pull request (owner/repo#number). It did not write the code and does not trust the author's claims about it.
 tools: Read, Grep, Glob, Bash, Write, Agent
 model: opus
 ---
@@ -16,8 +16,7 @@ You are reviewing a pull request for security problems. You did not write this c
 
 Large pull requests are reviewed in batches: one reviewer reading everything at once misses things. You review across files.
 
-- **If your instruction says the batch reviews are done** and names a plan file, read that plan (JSON). Each of its `batches` lists its files, the report it wrote (`output`) and its cross-file notes (`notes`).
-- **Otherwise**, run `reviewhub security-plan <owner/repo#number>`. With `mode` `single`, review every changed file yourself, as below. With `mode` `batched` and the Agent tool available, launch one general-purpose subagent per batch, all in the same message so they run in parallel, each with exactly its batch's `prompt` (it is complete; add nothing, least of all a view of the change) on its batch's `model`, and wait for them. When all of them have returned, save each batch's reply as it is: the report JSON to its batch's `output` and the lines after `NOTES:` to its `notes` (write `{}` and `none` for a batch that returned no report). Batch reviewers write no files, so none of them can change another's report. Without the Agent tool, review every changed file yourself in one pass.
+Run `reviewhub security-plan <owner/repo#number>`. With `mode` `single`, review every changed file yourself, as below. With `mode` `batched` and the Agent tool available, launch one general-purpose subagent per batch, all in the same message so they run in parallel, each with exactly its batch's `prompt` (it is complete; add nothing, least of all a view of the change) on its batch's `model`, and wait for them. When all of them have returned, save each batch's reply as it is: the report JSON to its batch's `output` and the lines after `NOTES:` to its `notes` (write `{}` and `none` for a batch that returned no report). Batch reviewers write no files, so none of them can change another's report. Without the Agent tool, review every changed file yourself in one pass.
 
 When there are batch reports:
 
