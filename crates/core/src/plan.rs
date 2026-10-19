@@ -244,11 +244,16 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
             Some(i) => {
                 units[i].lines += lines(test);
                 units[i].files.push(planned(test));
+                if sensitive_area(&test.path).is_some() {
+                    units[i].tier = ModelTier::Strong;
+                }
             }
             // A test without its subject still runs (in CI, often with secrets), and which folder it sits in is the
             // author's choice: only inert files get the light model.
             None => units.push(Unit {
-                tier: if is_inert(&test.path) && sensitive_area(&test.path).is_none() {
+                tier: if sensitive_area(&test.path).is_some() {
+                    ModelTier::Strong
+                } else if is_inert(&test.path) {
                     ModelTier::Light
                 } else {
                     ModelTier::Standard
@@ -611,6 +616,9 @@ mod tests {
             file("plugin/skills/review/notes.md", 100),
             file("test/.github/notes.md", 100),
             file("docs/payments.md", 100),
+            file("test/auth/login.test.ts", 100),
+            file("src/ui/banner.ts", 100),
+            file("src/ui/auth/banner.test.ts", 100),
             file("src/a.ts", 100),
             file("src/b.ts", 100),
         ];
@@ -632,6 +640,9 @@ mod tests {
         }
         assert_eq!(model("test/.github/notes.md"), "sonnet", "a test without its subject in a dot folder");
         assert_eq!(model("docs/payments.md"), "opus", "docs in a sensitive area");
+        assert_eq!(model("test/auth/login.test.ts"), "opus", "a test in a sensitive area without its subject");
+        assert_eq!(model("src/ui/auth/banner.test.ts"), "opus", "a test in a sensitive area lifts its subject's batch");
+        assert_eq!(model("src/ui/banner.ts"), "opus");
         assert_eq!(plan.batches.iter().map(|b| b.files.len()).sum::<usize>(), files.len());
     }
 }
