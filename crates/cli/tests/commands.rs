@@ -560,6 +560,8 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     let files = std::fs::read_to_string(dir.join("claude-args.files")).unwrap();
     assert!(files.contains("./src/app.ts") && files.contains("./src/hidden.ts"), "{files}");
     assert!(!files.contains("passwords"), "{files}");
+    // The reviewer is told what was left out, so it reads it from the diff.
+    assert!(args.contains("are not in the working directory") && args.contains(r#"["src/passwords"]"#), "{args}");
     let app = std::fs::read_to_string(dir.join("claude-args.app")).unwrap();
     assert_eq!(app, "export const app = 1;\n\n// end\n", "files are exported byte for byte");
     let plan_dir = std::fs::read_to_string(dir.join("claude-args.plan-dir")).unwrap();
