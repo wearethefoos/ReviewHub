@@ -355,6 +355,8 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
         .args(["--agents", &crate::plan::batch_agents()])
         // The checkout is usually the pull request's branch: none of its project settings, hooks or agents apply.
         .args(["--setting-sources", "user"])
+        // And no MCP server from the pull request's .mcp.json, even when the user's settings enable project servers.
+        .arg("--strict-mcp-config")
         .args([
             "--allowedTools",
             "Read,Grep,Glob,Write,Agent,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),\

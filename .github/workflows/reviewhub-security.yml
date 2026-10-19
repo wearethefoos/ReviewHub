@@ -96,6 +96,8 @@ jobs:
           github_token: ${{ github.token }}
           prompt: ${{ steps.prompt.outputs.text }}
           claude_args: >-
+            --setting-sources user
+            --strict-mcp-config
             --allowedTools "Read,Grep,Glob,Write,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*)"
       - name: Check the report
         run: reviewhub validate security reviewhub-security.json

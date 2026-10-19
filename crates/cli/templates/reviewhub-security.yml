@@ -116,6 +116,7 @@ jobs:
             --add-dir ${{ runner.temp }}/reviewhub-review
             --agents '${{ steps.prompt.outputs.agents }}'
             --setting-sources user
+            --strict-mcp-config
             --allowedTools "Read,Grep,Glob,Write,Agent,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),Bash(reviewhub security-plan:*),Bash(reviewhub security-merge:*)"
       - name: Check the report
         run: reviewhub validate security reviewhub-security.json

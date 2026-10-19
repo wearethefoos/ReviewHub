@@ -347,6 +347,18 @@ mod tests {
                 workflow.contains(&format!("REVIEWHUB_VERSION: \"{VERSION}\"")) && !workflow.contains("{{VERSION}}")
             );
         }
+        // The security review runs Claude Code in the pull request's checkout: none of the pull request's CLAUDE.md
+        // files, project settings, hooks or agents may load, and the reviewer runs no git.
+        let security = fs::read_to_string(dir.join(".github/workflows/reviewhub-security.yml")).unwrap();
+        for guard in [
+            "--setting-sources user",
+            "--strict-mcp-config",
+            "--agents '${{ steps.prompt.outputs.agents }}'",
+            "rm -rf .claude/agents",
+        ] {
+            assert!(security.contains(guard), "{guard}");
+        }
+        assert!(!security.contains("Bash(git"));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
