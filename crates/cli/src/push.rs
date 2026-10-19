@@ -242,14 +242,16 @@ fn tree_files(head: &str) -> Result<Vec<(String, String)>> {
     Ok(files)
 }
 
-/// A path from the pull request's tree that stays inside the export, on any platform: only plain names, and no
-/// backslash or colon (Windows reads `a\\..\\..\\x` and `C:x` as leaving the folder).
+/// A path from the pull request's tree that stays inside the export, on any platform: only plain names, no backslash
+/// or colon (Windows reads `a\\..\\..\\x` and `C:x` as leaving the folder), and no `.git`, also not as `.git.` or
+/// `.git ` (Windows drops trailing dots and spaces).
 fn safe_path(path: &str) -> bool {
     !path.starts_with('/')
         && !path.contains(['\\', ':'])
-        && path
-            .split('/')
-            .all(|part| !part.is_empty() && part != "." && part != ".." && !part.eq_ignore_ascii_case(".git"))
+        && path.split('/').all(|part| {
+            let name = part.trim_end_matches(['.', ' ']);
+            !name.is_empty() && !name.eq_ignore_ascii_case(".git")
+        })
 }
 
 /// Instructions for the headless reviewer: the security-reviewer agent's, without its front matter.
@@ -398,7 +400,7 @@ mod tests {
 
     #[test]
     fn exports_only_paths_inside_the_export() {
-        assert!(safe_path("src/app.ts") && safe_path(".github/workflows/ci.yml"));
+        assert!(safe_path("src/app.ts") && safe_path(".github/workflows/ci.yml") && safe_path(".gitignore"));
         for path in [
             "/etc/passwd",
             "../outside",
@@ -411,6 +413,10 @@ mod tests {
             "a\\..\\..\\Startup\\x.bat",
             "C:x",
             "src/C:\\x",
+            ".git./config",
+            "a/.GIT /hooks/x",
+            "...",
+            "a/ /b",
         ] {
             assert!(!safe_path(path), "{path}");
         }
