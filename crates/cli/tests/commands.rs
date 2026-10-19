@@ -373,7 +373,7 @@ fn fake_claude(dir: &Path, report: &Path) -> String {
     let bin = dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
+        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\ncat src/app.ts > '{log}.app' 2>/dev/null\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
         log = dir.join("claude-args").display(),
         report = report.display()
     );
@@ -506,8 +506,11 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
 
     // Nobody has: runs Claude Code, then validates and publishes what it wrote.
     std::fs::create_dir_all(repo.join("src")).unwrap();
-    std::fs::write(repo.join("src/app.ts"), "export {};\n").unwrap();
+    std::fs::write(repo.join("src/app.ts"), "export const app = 1;\n\n// end\n").unwrap();
     std::os::unix::fs::symlink("/etc/passwd", repo.join("src/passwords")).unwrap();
+    // The pull request's .gitattributes can't hide a file from the reviewer.
+    std::fs::write(repo.join("src/hidden.ts"), "export {};\n").unwrap();
+    std::fs::write(repo.join(".gitattributes"), "src/hidden.ts export-ignore\n").unwrap();
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-q", "-m", "head"]);
     let head = String::from_utf8(
@@ -548,7 +551,10 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(cwd.trim().ends_with("/head"), "{cwd}");
     assert!(!Path::new(cwd.trim()).exists(), "the export is removed afterwards");
     let files = std::fs::read_to_string(dir.join("claude-args.files")).unwrap();
-    assert!(files.contains("./src/app.ts") && !files.contains("passwords"), "{files}");
+    assert!(files.contains("./src/app.ts") && files.contains("./src/hidden.ts"), "{files}");
+    assert!(!files.contains("passwords"), "{files}");
+    let app = std::fs::read_to_string(dir.join("claude-args.app")).unwrap();
+    assert_eq!(app, "export const app = 1;\n\n// end\n", "files are exported byte for byte");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
     assert!(post.body.contains("reviewhub:security"));
 
@@ -564,19 +570,6 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
         .env("PATH", &path)
         .env("GITHUB_TOKEN", "t"));
     assert!(!output.status.success() && stderr(&output).contains("the report is not valid"), "{}", stderr(&output));
-
-    // Without tar the head commit can't be exported, and nothing runs.
-    let no_tar = dir.join("no-tar");
-    std::fs::create_dir_all(&no_tar).unwrap();
-    for tool in ["git", "claude"] {
-        let lookup = format!("command -v {tool}");
-        let found = std::process::Command::new("sh").args(["-c", &lookup]).env("PATH", &path).output().unwrap();
-        let found = String::from_utf8(found.stdout).unwrap();
-        std::os::unix::fs::symlink(found.trim(), no_tar.join(tool)).unwrap();
-    }
-    let output =
-        run(github.reviewhub(&["security-review", "o/r#7", "--force"]).current_dir(&repo).env("PATH", &no_tar));
-    assert!(stderr(&output).contains(&format!("couldn't export commit {head}")), "{}", stderr(&output));
 
     // A head commit the repository doesn't have and can't fetch.
     git(&repo, &["remote", "set-url", "origin", "/nonexistent"]);

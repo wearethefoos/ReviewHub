@@ -185,7 +185,9 @@ fn has_commit(sha: &str) -> bool {
 
 /// The files of the pull request's head commit, exported into the new directory `dir` (fetched first when needed).
 /// The reviewer reads them there instead of running git, whose flags can write files (`git log --output`) or run
-/// commands (`git fetch --upload-pack`). Symlinks are left out: one could point at a private file outside.
+/// commands (`git fetch --upload-pack`). They come straight from git's objects, so the pull request's
+/// `.gitattributes` can't hide or rewrite any (as `git archive` would let it), and symlinks are left out: one could
+/// point at a private file outside.
 fn export_commit(head: &str, number: u32, dir: &Path) -> Result<()> {
     if !has_commit(head) {
         let _ = Command::new("git")
@@ -198,26 +200,54 @@ fn export_commit(head: &str, number: u32, dir: &Path) -> Result<()> {
         bail!("this repository doesn't have commit {head}; run `git fetch origin pull/{number}/head` and try again");
     }
     fs::create_dir(dir)?;
-    let mut archive = Command::new("git").args(["archive", "--format=tar", head]).stdout(Stdio::piped()).spawn()?;
-    let tar = Command::new("tar").arg("-xf").arg("-").arg("-C").arg(dir).stdin(archive.stdout.take().unwrap()).status();
-    let archived = archive.wait()?;
-    if !archived.success() || !tar.as_ref().is_ok_and(|s| s.success()) {
-        bail!("couldn't export commit {head}");
+    let files = tree_files(head)?;
+    let mut cat =
+        Command::new("git").args(["cat-file", "--batch"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
+    let oids: String = files.iter().map(|(oid, _)| format!("{oid}\n")).collect();
+    let mut stdin = cat.stdin.take().context("git cat-file has no stdin")?;
+    // Written from another thread: git answers while it reads, and both pipes would fill up.
+    let writer = std::thread::spawn(move || stdin.write_all(oids.as_bytes()));
+    let mut out = std::io::BufReader::new(cat.stdout.take().context("git cat-file has no stdout")?);
+    for (_, path) in &files {
+        use std::io::{BufRead as _, Read as _};
+        let mut header = String::new();
+        out.read_line(&mut header)?;
+        let size: usize = header.split_whitespace().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let mut content = vec![0; size + 1];
+        out.read_exact(&mut content)?;
+        content.pop();
+        let target = dir.join(path);
+        fs::create_dir_all(target.parent().unwrap_or(dir))?;
+        fs::write(&target, content)?;
     }
-    remove_symlinks(dir)
+    let _ = writer.join();
+    cat.wait()?;
+    Ok(())
 }
 
-fn remove_symlinks(dir: &Path) -> Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let path = entry?.path();
-        let kind = fs::symlink_metadata(&path)?.file_type();
-        if kind.is_symlink() {
-            fs::remove_file(&path)?;
-        } else if kind.is_dir() {
-            remove_symlinks(&path)?;
-        }
-    }
-    Ok(())
+/// The commit's regular files, as (object id, path): no symlinks (mode 120000), no submodules, and no path that
+/// would leave the export.
+fn tree_files(head: &str) -> Result<Vec<(String, String)>> {
+    let out = Command::new("git").args(["ls-tree", "-r", "-z", "--full-tree", head]).output()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let files = text
+        .split('\0')
+        .filter_map(|entry| {
+            let (meta, path) = entry.split_once('\t')?;
+            let mut meta = meta.split(' ');
+            let (mode, kind, oid) = (meta.next()?, meta.next()?, meta.next()?);
+            (kind == "blob" && mode != "120000" && safe_path(path)).then(|| (oid.to_string(), path.to_string()))
+        })
+        .collect();
+    Ok(files)
+}
+
+/// A path from the pull request's tree that stays inside the export.
+fn safe_path(path: &str) -> bool {
+    !path.starts_with('/')
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != ".." && !part.eq_ignore_ascii_case(".git"))
 }
 
 /// Instructions for the headless reviewer: the security-reviewer agent's, without its front matter.
@@ -357,4 +387,17 @@ pub fn ask_install() -> bool {
         return false;
     }
     !answer.trim().to_lowercase().starts_with('n')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exports_only_paths_inside_the_export() {
+        assert!(safe_path("src/app.ts") && safe_path(".github/workflows/ci.yml"));
+        for path in ["/etc/passwd", "../outside", "src/../../x", "a//b", "./a", ".git/config", "sub/.GIT/hooks/x", ""] {
+            assert!(!safe_path(path), "{path}");
+        }
+    }
 }
