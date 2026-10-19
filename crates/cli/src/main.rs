@@ -178,12 +178,21 @@ Uses GITHUB_TOKEN, or the token from `gh auth login`."
     },
     /// Combine the batches' security reports into one, for the review across files
     #[command(
-        after_help = "Drops duplicate findings (keeping the more severe), makes ids unique and prints the report."
+        after_help = "Checks the plan is still the one for the pull request's head and that each batch's report \
+                      is by its batch's reviewer, on the head commit and about the batch's files; reads them from \
+                      the plan's directory, drops duplicate findings (keeping the more severe), makes ids unique and \
+                      prints the report. Batches without a usable report are listed on stderr and in the summary."
     )]
     SecurityMerge {
-        /// The batches' reports
-        #[arg(required = true)]
-        files: Vec<PathBuf>,
+        /// owner/repo#123 or a pull request URL
+        #[arg(required_unless_present = "bundle")]
+        pr: Option<String>,
+        /// Read a saved bundle instead of GitHub
+        #[arg(long, value_name = "FILE", conflicts_with = "pr")]
+        bundle: Option<PathBuf>,
+        /// The plan.json `reviewhub security-plan` wrote
+        #[arg(long, value_name = "FILE")]
+        plan: PathBuf,
         /// The model of the reviewer combining them, for the report's scanner
         #[arg(long)]
         model: Option<String>,
@@ -387,8 +396,13 @@ fn run(cli: Cli) -> Result<()> {
             let models = plan::models(|name| std::env::var(name).ok());
             println!("{}", serde_json::to_string_pretty(&plan::plan_json(&bundle, &models, out_dir)?)?);
         }
-        Cmd::SecurityMerge { files, model, out } => {
-            let report = serde_json::to_string_pretty(&plan::merge(&files, model)?.to_value())?;
+        Cmd::SecurityMerge { pr, bundle, plan: plan_file, model, out } => {
+            let bundle = load_bundle(bundle, pr.as_deref())?;
+            let (report, problems) = plan::merge(&plan_file, &bundle, model)?;
+            for problem in problems {
+                eprintln!("No usable report from {problem}. Review its files yourself.");
+            }
+            let report = serde_json::to_string_pretty(&report.to_value())?;
             match out {
                 Some(out) => plan::write(&out, &report)?,
                 None => println!("{report}"),

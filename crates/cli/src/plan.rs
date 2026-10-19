@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 
 use reviewhub_core::model::{PullRequestBundle, Scanner, SecurityReport};
@@ -129,22 +129,82 @@ pub fn plan_json(bundle: &PullRequestBundle, models: &Models, out_dir: Option<Pa
     Ok(out)
 }
 
-/// The batches' reports combined into one, for the pass across files.
-pub fn merge(files: &[PathBuf], model: Option<String>) -> Result<Report> {
-    let mut batches = Vec::new();
-    for file in files {
-        let text = std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
-        let json: Value =
-            serde_json::from_str(&text).with_context(|| format!("{} is not valid JSON", file.display()))?;
-        let report = reports::validate(Kind::Security, &json)
-            .map_err(|e| anyhow!("{} is not a valid security report:\n{e}", file.display()))?;
-        let report: SecurityReport = serde_json::from_value(report.to_value())?;
-        let id = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        batches.push((id, report));
+/// The files each batch reviews, by batch id.
+fn batch_files(batches: &Value) -> Vec<(String, Vec<String>)> {
+    let list = batches.as_array().map(Vec::as_slice).unwrap_or_default();
+    list.iter()
+        .map(|b| {
+            let files = b["files"].as_array().map(Vec::as_slice).unwrap_or_default();
+            let paths = files.iter().filter_map(|f| f["path"].as_str().map(String::from)).collect();
+            (b["id"].as_str().unwrap_or_default().to_string(), paths)
+        })
+        .collect()
+}
+
+/// A batch's report, if it is a valid report by that batch's reviewer, on the head commit, about the batch's files.
+fn batch_report(file: &Path, id: &str, files: &[String], head: &str) -> Result<SecurityReport> {
+    let text = std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+    let json: Value = serde_json::from_str(&text).with_context(|| format!("{} is not valid JSON", file.display()))?;
+    let report = reports::validate(Kind::Security, &json)
+        .map_err(|e| anyhow!("{} is not a valid security report:\n{e}", file.display()))?;
+    let report: SecurityReport = serde_json::from_value(report.to_value())?;
+    let scanner = format!("reviewhub security-reviewer ({id})");
+    if report.scanner.name != scanner {
+        bail!("its scanner is {:?}, not {scanner:?}", report.scanner.name);
+    }
+    if report.commit.as_deref() != Some(head) {
+        bail!("it reviews commit {}, not the head commit {head}", report.commit.as_deref().unwrap_or("(none)"));
+    }
+    if let Some(f) = report.findings.iter().find(|f| !files.contains(&f.file)) {
+        bail!("finding {} is in {}, which isn't one of the batch's files", f.id, f.file);
+    }
+    Ok(report)
+}
+
+/// The batches' reports combined into one, for the pass across files, and the batches whose report couldn't be used.
+///
+/// Batch reviewers read files the pull request's author wrote, so neither the plan file nor the reports are taken
+/// on trust: the plan must still be the one for the pull request's head (recomputed here, so a stale, edited or
+/// truncated plan is refused), and each report must come from its batch's reviewer, be about its batch's files and
+/// be on the head commit.
+pub fn merge(plan_file: &Path, bundle: &PullRequestBundle, model: Option<String>) -> Result<(Report, Vec<String>)> {
+    let text = std::fs::read_to_string(plan_file).with_context(|| format!("cannot read {}", plan_file.display()))?;
+    let saved: Value =
+        serde_json::from_str(&text).with_context(|| format!("{} is not valid JSON", plan_file.display()))?;
+    let pr = format!("{}/{}#{}", bundle.pr.owner, bundle.pr.repo, bundle.pr.number);
+    let head = bundle.pr.head_sha.as_str();
+    if saved["pr"].as_str() != Some(pr.as_str()) {
+        bail!("{} is not a plan for {pr}", plan_file.display());
+    }
+    if saved["headSha"].as_str() != Some(head) {
+        bail!("{} is a plan for an earlier commit; {pr} is now at {head}: plan the review again", plan_file.display());
+    }
+    let model_of = |tier: &str| saved["models"][tier].as_str().unwrap_or_default().to_string();
+    let models = Models { strong: model_of("strong"), standard: model_of("standard"), light: model_of("light") };
+    let expected = serde_json::to_value(plan::security_plan(&bundle.files, &models, &Limits::default()).batches)?;
+    let batches = batch_files(&expected);
+    if batches.is_empty() || batch_files(&saved["batches"]) != batches {
+        bail!("{} doesn't match {pr}'s changed files: plan the review again", plan_file.display());
+    }
+    let dir = plan_file.parent().unwrap_or(Path::new("."));
+    let mut usable = Vec::new();
+    let mut problems = Vec::new();
+    for (id, files) in &batches {
+        match batch_report(&dir.join(format!("{id}.json")), id, files, head) {
+            Ok(report) => usable.push((id.clone(), report)),
+            Err(e) => problems.push(format!("{id} ({}): {e:#}", files.join(", "))),
+        }
     }
     let scanner = Scanner { name: "reviewhub security-reviewer".into(), model };
-    let merged = plan::merge_security(&batches, scanner, None);
-    reports::validate(Kind::Security, &serde_json::to_value(&merged)?).map_err(|e| anyhow!(e))
+    let mut merged = plan::merge_security(&usable, scanner, Some(head.to_string()));
+    let unusable = problems.iter().map(|p| format!("No usable report from {p}"));
+    merged.summary = std::iter::once(merged.summary.clone())
+        .filter(|s| !s.is_empty())
+        .chain(unusable)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let report = reports::validate(Kind::Security, &serde_json::to_value(&merged)?).map_err(|e| anyhow!(e))?;
+    Ok((report, problems))
 }
 
 #[cfg(test)]

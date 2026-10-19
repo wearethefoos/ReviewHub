@@ -91,7 +91,7 @@ jobs:
             echo "REVIEWHUB_PROMPT_END"
           } >>"$GITHUB_OUTPUT"
       # Models: the strong one reviews sensitive files and across files, the standard one ordinary code, the light one
-      # tests and docs. Override them with the REVIEWHUB_MODEL_STRONG, _STANDARD and _LIGHT repository variables.
+      # docs and snapshots. Override them with the REVIEWHUB_MODEL_STRONG, _STANDARD and _LIGHT repository variables.
       - uses: anthropics/claude-code-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}

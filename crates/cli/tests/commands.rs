@@ -591,39 +591,114 @@ fn plans_and_merges_a_batched_security_review() {
     assert_eq!(saved, plan);
     assert_eq!(plan["planFile"], dir.join("batches/plan.json").display().to_string());
 
-    // Each batch writes a report; merging keeps one of a duplicate, the more severe.
+    // Each batch writes a report about its files; merging keeps one of a duplicate, the more severe.
     let security = demo()["reports"]["security"]["data"].clone();
-    let mut first = security.clone();
-    first["findings"] = json!([security["findings"][0]]);
-    let mut second = security.clone();
-    let mut duplicate = security["findings"][0].clone();
-    duplicate["severity"] = json!("low");
-    second["findings"] = json!([duplicate, security["findings"][1]]);
-    let (a, b) = (dir.join("batch-1.json"), dir.join("batch-2.json"));
-    std::fs::write(&a, first.to_string()).unwrap();
-    std::fs::write(&b, second.to_string()).unwrap();
+    let findings = security["findings"].as_array().unwrap();
+    let head = plan["headSha"].as_str().unwrap();
+    let report_for = |batch: &Value| {
+        let files: Vec<&str> = batch["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
+        let mut report = security.clone();
+        report["scanner"] =
+            json!({ "name": format!("reviewhub security-reviewer ({})", batch["id"].as_str().unwrap()) });
+        report["commit"] = json!(head);
+        report["findings"] =
+            json!(findings.iter().filter(|f| files.contains(&f["file"].as_str().unwrap())).collect::<Vec<_>>());
+        report
+    };
+    let with_findings = batches.iter().position(|b| !report_for(b)["findings"].as_array().unwrap().is_empty()).unwrap();
+    let expected = findings.len();
+    for (i, batch) in batches.iter().enumerate() {
+        let mut report = report_for(batch);
+        if i == with_findings {
+            let mut duplicate = report["findings"][0].clone();
+            duplicate["severity"] = json!("info");
+            report["findings"].as_array_mut().unwrap().push(duplicate);
+        }
+        std::fs::write(batch["output"].as_str().unwrap(), report.to_string()).unwrap();
+    }
+    let plan_file = dir.join("batches/plan.json");
+    let merge = |plan: &Path, extra: &[&str]| {
+        let mut args = vec!["security-merge", "--bundle", DEMO, "--plan", plan.to_str().unwrap()];
+        args.extend_from_slice(extra);
+        run(&mut github.reviewhub(&args))
+    };
     let merged = dir.join("merged.json");
-    let output = run(&mut github.reviewhub(&[
-        "security-merge",
-        a.to_str().unwrap(),
-        b.to_str().unwrap(),
-        "--model",
-        "fable",
-        "--out",
-        merged.to_str().unwrap(),
-    ]));
-    assert!(output.status.success(), "{}", stderr(&output));
+    let output = merge(&plan_file, &["--model", "fable", "--out", merged.to_str().unwrap()]);
+    assert!(output.status.success() && stderr(&output).is_empty(), "{}", stderr(&output));
     let report: Value = serde_json::from_str(&std::fs::read_to_string(&merged).unwrap()).unwrap();
-    assert_eq!(report["findings"].as_array().unwrap().len(), 2);
-    assert_eq!(report["findings"][0]["severity"], security["findings"][0]["severity"]);
+    assert_eq!(report["findings"].as_array().unwrap().len(), expected);
     assert_eq!(report["scanner"], json!({ "name": "reviewhub security-reviewer", "model": "fable" }));
+    assert_eq!(report["commit"], head);
+    assert!(!report["summary"].as_str().unwrap().contains("No usable report"));
     assert!(run(&mut github.reviewhub(&["validate", "security", merged.to_str().unwrap()])).status.success());
 
     // Without --out, the merged report is printed.
-    let printed = run(&mut github.reviewhub(&["security-merge", a.to_str().unwrap(), b.to_str().unwrap()]));
+    let printed = merge(&plan_file, &[]);
     let printed: Value = serde_json::from_str(&stdout(&printed)).unwrap();
     assert_eq!(printed["findings"], report["findings"]);
     assert_eq!(printed["scanner"], json!({ "name": "reviewhub security-reviewer" }));
+
+    // A batch reviewer reads the author's files and could be talked into writing another batch's report: a report
+    // that isn't by its batch's reviewer, on the head commit and about its batch's files isn't used.
+    let output_of = |i: usize| PathBuf::from(batches[i]["output"].as_str().unwrap());
+    let mut forged = report_for(&batches[0]);
+    forged["scanner"]["name"] = json!("reviewhub security-reviewer (batch-9)");
+    std::fs::write(output_of(0), forged.to_string()).unwrap();
+    let mut stale = report_for(&batches[1]);
+    stale["commit"] = json!("0000000");
+    std::fs::write(output_of(1), stale.to_string()).unwrap();
+    let mut elsewhere = report_for(&batches[2]);
+    let mut outside = findings[0].clone();
+    (outside["id"], outside["file"]) = (json!("x"), json!("README.md"));
+    elsewhere["findings"] = json!([outside]);
+    std::fs::write(output_of(2), elsewhere.to_string()).unwrap();
+    std::fs::write(output_of(3), "{}").unwrap();
+    std::fs::remove_file(output_of(4)).unwrap();
+    let output = merge(&plan_file, &[]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let err = stderr(&output);
+    for (i, reason) in [
+        "its scanner is \"reviewhub security-reviewer (batch-9)\"",
+        "it reviews commit 0000000, not the head commit",
+        "finding x is in README.md, which isn't one of the batch's files",
+        "is not a valid security report",
+        "cannot read",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = batches[i]["id"].as_str().unwrap();
+        assert!(err.contains(&format!("No usable report from {id} (")) && err.contains(reason), "{reason}: {err}");
+    }
+    assert!(err.contains("Review its files yourself."), "{err}");
+    let partial: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let summary = partial["summary"].as_str().unwrap();
+    assert!(summary.contains(&format!("No usable report from {} (", batches[0]["id"].as_str().unwrap())), "{summary}");
+    std::fs::write(output_of(3), "not json").unwrap();
+    assert!(stderr(&merge(&plan_file, &[])).contains("is not valid JSON"));
+
+    // The plan must still be the one for the pull request's head: not another pull request's, not a stale one, not
+    // edited to drop a batch.
+    let tampered = |name: &str, change: &dyn Fn(&mut Value)| {
+        let mut changed = plan.clone();
+        change(&mut changed);
+        let file = dir.join(name);
+        std::fs::write(&file, changed.to_string()).unwrap();
+        stderr(&merge(&file, &[]))
+    };
+    assert!(
+        tampered("other.json", &|p| p["pr"] = json!("demo/other#1")).contains("is not a plan for demo/acme-shop#128")
+    );
+    assert!(tampered("stale.json", &|p| p["headSha"] = json!("abc")).contains("plan the review again"));
+    let dropped = tampered("dropped.json", &|p| {
+        p["batches"].as_array_mut().unwrap().pop();
+    });
+    assert!(dropped.contains("doesn't match demo/acme-shop#128's changed files"), "{dropped}");
+    let renamed = tampered("renamed.json", &|p| p["batches"][0]["files"][0]["path"] = json!("README.md"));
+    assert!(renamed.contains("doesn't match"), "{renamed}");
+    assert!(stderr(&merge(&dir.join("missing.json"), &[])).contains("cannot read"));
+    std::fs::write(dir.join("broken.json"), "plan").unwrap();
+    assert!(stderr(&merge(&dir.join("broken.json"), &[])).contains("is not valid JSON"));
 
     // A small pull request is reviewed in one pass: no batches, no directory.
     let mut small = demo();
@@ -642,8 +717,5 @@ fn plans_and_merges_a_batched_security_review() {
     assert!(plan_file.is_file() && plan_file.parent().unwrap() != dir.join("batches"));
     std::fs::remove_dir_all(plan_file.parent().unwrap()).unwrap();
 
-    std::fs::write(&a, "{}").unwrap();
-    let output = run(&mut github.reviewhub(&["security-merge", a.to_str().unwrap()]));
-    assert!(stderr(&output).contains("is not a valid security report"));
     let _ = std::fs::remove_dir_all(dir);
 }
