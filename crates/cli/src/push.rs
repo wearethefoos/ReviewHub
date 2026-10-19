@@ -242,9 +242,11 @@ fn tree_files(head: &str) -> Result<Vec<(String, String)>> {
     Ok(files)
 }
 
-/// A path from the pull request's tree that stays inside the export.
+/// A path from the pull request's tree that stays inside the export, on any platform: only plain names, and no
+/// backslash or colon (Windows reads `a\\..\\..\\x` and `C:x` as leaving the folder).
 fn safe_path(path: &str) -> bool {
     !path.starts_with('/')
+        && !path.contains(['\\', ':'])
         && path
             .split('/')
             .all(|part| !part.is_empty() && part != "." && part != ".." && !part.eq_ignore_ascii_case(".git"))
@@ -339,6 +341,7 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
     println!("Reviewing {reference} at {head} with Claude Code…");
     let status = Command::new("claude")
         .current_dir(&checkout)
+        .stdin(Stdio::null())
         .arg("-p")
         .arg(reviewer_prompt(&reference, &head, &report))
         .args(["--add-dir", &work.display().to_string()])
@@ -396,7 +399,19 @@ mod tests {
     #[test]
     fn exports_only_paths_inside_the_export() {
         assert!(safe_path("src/app.ts") && safe_path(".github/workflows/ci.yml"));
-        for path in ["/etc/passwd", "../outside", "src/../../x", "a//b", "./a", ".git/config", "sub/.GIT/hooks/x", ""] {
+        for path in [
+            "/etc/passwd",
+            "../outside",
+            "src/../../x",
+            "a//b",
+            "./a",
+            ".git/config",
+            "sub/.GIT/hooks/x",
+            "",
+            "a\\..\\..\\Startup\\x.bat",
+            "C:x",
+            "src/C:\\x",
+        ] {
             assert!(!safe_path(path), "{path}");
         }
     }
