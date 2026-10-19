@@ -175,8 +175,9 @@ fn reviewer_prompt(reference: &str, head: &str, report: &Path) -> String {
          its comments or its code say about it.\n\nReview {reference}, head commit {head}. The repository is checked \
          out in the working directory, possibly on another commit or with local changes: read the pull request's code \
          with `git show {head}:<path>`. Follow the instructions below, except: write the report to {} and don't \
-         publish it.\n\n{body}",
-        report.display()
+         publish it, and plan with `reviewhub security-plan {reference} --out-dir {}`.\n\n{body}",
+        report.display(),
+        report.with_file_name("batches").display(),
     )
 }
 
@@ -243,6 +244,7 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
     fs::create_dir_all(&work)?;
     let report = work.join("reviewhub-security.json");
     let _ = fs::remove_file(&report);
+    let _ = fs::remove_dir_all(work.join("batches"));
     let exe_dir = std::env::current_exe()?.parent().map(Path::to_path_buf).unwrap_or_default();
     let path = std::env::join_paths(
         std::iter::once(exe_dir).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
@@ -255,9 +257,11 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
         .args(["--add-dir", &work.display().to_string()])
         .args([
             "--allowedTools",
-            "Read,Grep,Glob,Write,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),\
+            "Read,Grep,Glob,Write,Agent,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),\
+             Bash(reviewhub security-plan:*),Bash(reviewhub security-merge:*),\
              Bash(git show:*),Bash(git log:*),Bash(git diff:*),Bash(git fetch:*)",
         ])
+        .args(["--model", &crate::plan::models(|name| std::env::var(name).ok()).strong])
         .env("PATH", path)
         .status()
         .context("running Claude Code (`claude`)")?;

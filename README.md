@@ -160,6 +160,7 @@ reviewhub validate manifest manifest.json                   # exit code 1 with r
 reviewhub metrics --lcov coverage/*.info --base origin/main > metrics.json  # coverage from lcov, complexity of changed files
 reviewhub publish security security.json --repo owner/repo --pr 123   # create or update the PR comment
 reviewhub security-review owner/repo#123                    # headless Claude Code security review, published
+reviewhub security-plan owner/repo#123                      # how the review splits into batches, and their models
 reviewhub update-check                                      # is there a newer release? (checks once a day)
 ```
 
@@ -190,6 +191,19 @@ The security report comes from an agent that didn't write the change and only ge
 - **On push, with the pre-push hook** (`reviewhub init --pre-push`). For branches with a review manifest from an agent session, it tells Claude to run the review (in a Claude Code session), or starts a headless Claude Code review in the background (from your terminal; log in `.git/reviewhub/security-review.log`) that publishes once the push reaches the pull request. It does nothing when CI reviews the pull request, and never blocks a push. Git hooks aren't committed: `init` installs it in your clone, and Claude Code sessions install it in theirs.
 
 By hand: `/reviewhub:security-review owner/repo#123` in Claude Code, or `reviewhub security-review owner/repo#123` in a terminal with Claude Code installed.
+
+**Large pull requests are reviewed in batches.** One reviewer reading 40 files at once misses things, so `reviewhub security-plan` splits a large pull request into batches of a few files (a file and its tests stay together; dependency changes form their own batch). The reviewer has one subagent review each batch in parallel, merges their reports (`reviewhub security-merge`), and then reviews across files itself: the cross-file notes each batch leaves, checks in one file that another relies on, input from one file reaching a sink in another. Small pull requests (up to 6 files and 400 changed lines) get one pass.
+
+**Each part runs on a model that fits it.** The plan uses only paths and the diff, never the author's manifest, so the author can't move a risky file onto a cheaper model:
+
+| Part | Model | Set with |
+| --- | --- | --- |
+| The reviewer: single pass, or coordinating and reviewing across files | strong (`opus`) | `REVIEWHUB_MODEL_STRONG` |
+| Batches touching authentication, authorization, cryptography, secrets, payments, migrations or CI | strong (`opus`) | `REVIEWHUB_MODEL_STRONG` |
+| Other code, configuration and dependency changes | standard (`sonnet`) | `REVIEWHUB_MODEL_STANDARD` |
+| Batches of only tests and docs | light (`haiku`) | `REVIEWHUB_MODEL_LIGHT` |
+
+Values are Claude Code model aliases (`fable`, `opus`, `sonnet`, `haiku`) or model ids; `REVIEWHUB_MODEL_STRONG=fable`, for example, puts Fable on the hard parts. Set them in your environment, or as repository variables (Settings → Secrets and variables → Actions → Variables) for the CI review.
 
 ## Coverage and quality
 

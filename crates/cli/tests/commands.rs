@@ -549,3 +549,62 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     let _ = std::fs::remove_dir_all(repo);
     let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("reviewhub-security-{head}")));
 }
+
+#[test]
+fn plans_and_merges_a_batched_security_review() {
+    let github = MockGitHub::start(vec![]);
+    let dir = temp_dir("plan");
+    let output = run(github
+        .reviewhub(&["security-plan", "--bundle", DEMO, "--out-dir", dir.join("batches").to_str().unwrap()])
+        .env("REVIEWHUB_MODEL_STRONG", "fable"));
+    assert!(output.status.success(), "{}", stderr(&output));
+    let plan: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(plan["mode"], "batched");
+    assert_eq!(plan["coordinatorModel"], "fable");
+    assert_eq!(plan["pr"], "demo/acme-shop#128");
+    let batches = plan["batches"].as_array().unwrap();
+    let models: Vec<&str> = batches.iter().map(|b| b["model"].as_str().unwrap()).collect();
+    assert!(models.contains(&"fable") && models.contains(&"sonnet") && models.contains(&"haiku"), "{models:?}");
+    for batch in batches {
+        let prompt = batch["prompt"].as_str().unwrap();
+        let output = batch["output"].as_str().unwrap();
+        assert!(prompt.contains(output) && prompt.contains("Cross-file notes:") && prompt.contains("injection"));
+        for file in batch["files"].as_array().unwrap() {
+            assert!(prompt.contains(file["path"].as_str().unwrap()));
+        }
+    }
+    assert!(dir.join("batches").is_dir());
+
+    // Each batch writes a report; merging keeps one of a duplicate, the more severe.
+    let security = demo()["reports"]["security"]["data"].clone();
+    let mut first = security.clone();
+    first["findings"] = json!([security["findings"][0]]);
+    let mut second = security.clone();
+    let mut duplicate = security["findings"][0].clone();
+    duplicate["severity"] = json!("low");
+    second["findings"] = json!([duplicate, security["findings"][1]]);
+    let (a, b) = (dir.join("batch-1.json"), dir.join("batch-2.json"));
+    std::fs::write(&a, first.to_string()).unwrap();
+    std::fs::write(&b, second.to_string()).unwrap();
+    let merged = dir.join("merged.json");
+    let output = run(&mut github.reviewhub(&[
+        "security-merge",
+        a.to_str().unwrap(),
+        b.to_str().unwrap(),
+        "--model",
+        "fable",
+        "--out",
+        merged.to_str().unwrap(),
+    ]));
+    assert!(output.status.success(), "{}", stderr(&output));
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(&merged).unwrap()).unwrap();
+    assert_eq!(report["findings"].as_array().unwrap().len(), 2);
+    assert_eq!(report["findings"][0]["severity"], security["findings"][0]["severity"]);
+    assert_eq!(report["scanner"], json!({ "name": "reviewhub security-reviewer", "model": "fable" }));
+    assert!(run(&mut github.reviewhub(&["validate", "security", merged.to_str().unwrap()])).status.success());
+
+    std::fs::write(&a, "{}").unwrap();
+    let output = run(&mut github.reviewhub(&["security-merge", a.to_str().unwrap()]));
+    assert!(stderr(&output).contains("is not a valid security report"));
+    let _ = std::fs::remove_dir_all(dir);
+}

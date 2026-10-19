@@ -5,6 +5,7 @@ mod briefing;
 mod github;
 mod init;
 mod metrics;
+mod plan;
 mod push;
 mod render;
 mod stacks;
@@ -156,6 +157,40 @@ turn it off too."
     /// The git pre-push hook installed by `reviewhub init` (reads git's pre-push input on stdin)
     #[command(hide = true)]
     PrePush { remote: Option<String>, url: Option<String> },
+    /// Plan a pull request's security review: one pass, or batches of files for subagents, with a model for each
+    #[command(
+        after_help = "Prints JSON. A small pull request is reviewed in one pass; a large one is split into batches, \
+each with complete instructions (`prompt`), a report path (`output`) and a model, for one subagent each. The plan uses \
+only the paths and the diff, never the author's manifest. Models: REVIEWHUB_MODEL_STRONG (default opus), \
+REVIEWHUB_MODEL_STANDARD (sonnet) and REVIEWHUB_MODEL_LIGHT (haiku), as Claude Code model aliases or ids. \
+Uses GITHUB_TOKEN, or the token from `gh auth login`."
+    )]
+    SecurityPlan {
+        /// owner/repo#123 or a pull request URL
+        #[arg(required_unless_present = "bundle")]
+        pr: Option<String>,
+        /// Read a saved bundle instead of GitHub
+        #[arg(long, value_name = "FILE", conflicts_with = "pr")]
+        bundle: Option<PathBuf>,
+        /// Directory for the batches' reports [default: a new private temporary directory]
+        #[arg(long, value_name = "DIR")]
+        out_dir: Option<PathBuf>,
+    },
+    /// Combine the batches' security reports into one, for the review across files
+    #[command(
+        after_help = "Drops duplicate findings (keeping the more severe), makes ids unique and prints the report."
+    )]
+    SecurityMerge {
+        /// The batches' reports
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// The model of the reviewer combining them, for the report's scanner
+        #[arg(long)]
+        model: Option<String>,
+        /// Write the report to this file instead of printing it
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
     /// Check a report against its schema
     Validate {
         #[arg(value_parser = parse_kind, value_name = "manifest|security|metrics")]
@@ -345,6 +380,18 @@ fn run(cli: Cli) -> Result<()> {
                         "Tip: `reviewhub init --pre-push` adds a git hook that gets pushes from agent sessions security-reviewed."
                     );
                 }
+            }
+        }
+        Cmd::SecurityPlan { pr, bundle, out_dir } => {
+            let bundle = load_bundle(bundle, pr.as_deref())?;
+            let models = plan::models(|name| std::env::var(name).ok());
+            println!("{}", serde_json::to_string_pretty(&plan::plan_json(&bundle, &models, out_dir)?)?);
+        }
+        Cmd::SecurityMerge { files, model, out } => {
+            let report = serde_json::to_string_pretty(&plan::merge(&files, model)?.to_value())?;
+            match out {
+                Some(out) => std::fs::write(&out, report).with_context(|| format!("cannot write {}", out.display()))?,
+                None => println!("{report}"),
             }
         }
         Cmd::Validate { kind, file } => {
