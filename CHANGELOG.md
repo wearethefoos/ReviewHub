@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/wearethefoos/ReviewHub/compare/v0.7.0...v0.8.0) (2026-10-19)
+
+
+### Features
+
+* review large pull requests in batches, each on a model that fits ([#22](https://github.com/wearethefoos/ReviewHub/issues/22)) ([a5d6cb2](https://github.com/wearethefoos/ReviewHub/commit/a5d6cb2568294767c89bb7c712089e514b9d78d7))
+
 ## [0.7.0](https://github.com/wearethefoos/ReviewHub/compare/v0.6.0...v0.7.0) (2026-10-16)
 
 
