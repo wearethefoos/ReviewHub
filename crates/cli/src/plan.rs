@@ -51,22 +51,21 @@ pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path, notes: &
          {files}\n\
          1. Read their diffs with `reviewhub review {pr} --json --patches` (only your files are yours) and the code \
          around them with `git show {head}:<path>`. Read other files where you need to know how your files are \
-         called or what they call, but report findings only in your files. Don't create or modify any files except the report and the notes \
-         file named below.\n\
+         called or what they call, but report findings only in your files. Don't create or modify any files.\n\
          2. What to look for:\n\n{look}\n\n\
-         3. Write a ReviewHub security report (schema: `reviewhub schema security`) to {out}: `scanner.name` \
+         3. Write a ReviewHub security report (schema: `reviewhub schema security`; it will be saved to {out}): `scanner.name` \
          \"reviewhub security-reviewer ({id})\", `scanner.model` \"{model}\", `commit` \"{head}\", a one or two \
          sentence `summary`, and for each finding `id`, `title`, `severity`, `confidence`, `category` (a CWE id where \
          one fits), `file`, `lines` in the new version, a `description` of how it can be exploited, and \
          `suggestion.explanation` (plus `suggestion.diff`, a unified diff that applies with `git apply` on the head \
          commit, when the fix is local and certain). Report only findings you can tie to specific lines; an empty \
-         `findings` list is a valid result. Never copy a secret's value into the report. Run `reviewhub validate \
-         security {out}` and fix every error.\n\
-         4. Write cross-file notes to {notes}: one line for each thing the reviewer of the whole pull request should \
+         `findings` list is a valid result. Never copy a secret's value into the report. Check it with `reviewhub \
+         validate security -`, passing the JSON on stdin with a quoted heredoc, and fix every error.\n\
+         4. Write cross-file notes (they will be saved to {notes}): one line for each thing the reviewer of the whole pull request should \
          check across files: an assumption your files make about other code (\"routes/refunds.ts trusts \
          req.merchantId; check that the middleware sets it from the session\"), a changed function or contract that \
-         other files rely on, or untrusted input that leaves your files. Write \"none\" when there are none. Reply \
-         with the two paths.",
+         other files rely on, or untrusted input that leaves your files. Write \"none\" when there are none.\n\
+         5. Reply with only the report JSON, then a line `NOTES:`, then the notes.",
         notes = notes.display(),
         look = what_to_look_for(),
         out = output.display(),

@@ -6,7 +6,7 @@
 //! The plan uses only the paths and the diff, never the author's manifest: the
 //! author mustn't be able to move a risky file out of review or onto a cheaper
 //! model. Each batch gets a model by risk: the strong model for sensitive areas,
-//! the light one for batches of only docs and test snapshots, the standard one otherwise. Every changed file is
+//! the light one for batches of only docs, the standard one otherwise. Every changed file is
 //! reviewed: where a file lives is the author's choice, so it never takes a file out of review.
 
 use std::collections::BTreeMap;
@@ -139,11 +139,19 @@ fn is_dependency_file(path: &str) -> bool {
     is_lockfile(path) || MANIFESTS.contains(&name) || (name.starts_with("requirements") && name.ends_with(".txt"))
 }
 
-/// Files that don't run: prose and test snapshots, by extension (not by folder: a script in `docs/` still runs). Not
-/// `.txt`: `CMakeLists.txt` and `requirements.txt` configure builds.
+/// Prose nothing runs or obeys, by extension (not by folder: a script in `docs/` still runs). Not `.txt`
+/// (`CMakeLists.txt` configures builds), `.mdx` (compiles to JSX) or `.snap` (Jest evaluates snapshots); and not
+/// instructions for agents (`CLAUDE.md`, skills, anything in a dot folder such as `.claude/` or `.github/`).
 fn is_inert(path: &str) -> bool {
-    let name = file_name(path).to_ascii_lowercase();
-    [".md", ".mdx", ".rst", ".adoc", ".snap"].iter().any(|ext| name.ends_with(ext))
+    let lower = path.to_ascii_lowercase();
+    let name = file_name(&lower);
+    let instructions = ["claude.md", "agents.md", "gemini.md", "skill.md"].contains(&name)
+        || lower
+            .split('/')
+            .rev()
+            .skip(1)
+            .any(|dir| dir.starts_with('.') || ["agents", "skills", "commands", "prompts"].contains(&dir));
+    !instructions && [".md", ".rst", ".adoc"].iter().any(|ext| name.ends_with(ext))
 }
 
 /// A test's subject: `src/a.test.ts`, `src/__tests__/a.ts` and `pkg/a_test.go` all test `a`.
@@ -207,10 +215,9 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
     let mut units: Vec<Unit> = sources
         .iter()
         .map(|f| {
-            let inert = is_inert(&f.path);
-            let tier = if sensitive_area(&f.path).is_some() && !inert {
+            let tier = if sensitive_area(&f.path).is_some() {
                 ModelTier::Strong
-            } else if inert {
+            } else if is_inert(&f.path) {
                 ModelTier::Light
             } else {
                 ModelTier::Standard
@@ -241,7 +248,11 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
             // A test without its subject still runs (in CI, often with secrets), and which folder it sits in is the
             // author's choice: only inert files get the light model.
             None => units.push(Unit {
-                tier: if is_inert(&test.path) { ModelTier::Light } else { ModelTier::Standard },
+                tier: if is_inert(&test.path) && sensitive_area(&test.path).is_none() {
+                    ModelTier::Light
+                } else {
+                    ModelTier::Standard
+                },
                 lines: lines(test),
                 files: vec![planned(test)],
             }),
@@ -302,7 +313,7 @@ fn reason(batch: &Batch) -> String {
     }
     match batch.tier {
         ModelTier::Strong => format!("sensitive: {}", areas.join(", ")),
-        ModelTier::Light => "only docs and snapshots".into(),
+        ModelTier::Light => "only docs".into(),
         ModelTier::Standard => "application code".into(),
     }
 }
@@ -438,18 +449,19 @@ mod tests {
                 ),
                 // Application code on the standard model, within the line budget; a test without its source
                 // still runs, so it goes there too.
-                ("batch-2", "sonnet", vec!["src/api/routes/orders.ts"]),
-                ("batch-3", "sonnet", vec!["src/api/routes/users.ts", "test/e2e/profile.spec.ts", "src/ui/form.tsx"]),
-                ("batch-4", "sonnet", vec!["src/ui/button.tsx"]),
-                // Snapshots and docs on the light model; nothing is left out.
-                ("batch-5", "haiku", vec!["src/__snapshots__/a.snap"]),
+                // Jest evaluates snapshots: they aren't prose.
+                ("batch-2", "sonnet", vec!["src/__snapshots__/a.snap"]),
+                ("batch-3", "sonnet", vec!["src/api/routes/orders.ts"]),
+                ("batch-4", "sonnet", vec!["src/api/routes/users.ts", "test/e2e/profile.spec.ts", "src/ui/form.tsx"]),
+                ("batch-5", "sonnet", vec!["src/ui/button.tsx"]),
+                // Docs on the light model; nothing is left out.
                 ("batch-6", "haiku", vec!["docs/api.md"]),
                 // The supply chain together; lockfile lines don't count against the budget.
                 ("batch-7", "sonnet", vec!["package.json", "package-lock.json"]),
             ]
         );
         assert_eq!(plan.batches[0].reason, "sensitive: payments, CI pipeline");
-        assert_eq!(plan.batches[5].reason, "only docs and snapshots");
+        assert_eq!(plan.batches[5].reason, "only docs");
         assert_eq!(plan.batches[6].reason, "dependency changes");
         assert_eq!(plan.batches[6].changed_lines, 3);
     }
@@ -563,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn pairs_tests_with_the_closest_code_and_keeps_docs_light() {
+    fn pairs_tests_with_the_closest_code() {
         let files = [
             file("docs/api/refunds.md", 40),
             file("src/api/routes/refunds.ts", 200),
@@ -576,8 +588,8 @@ mod tests {
             summary,
             vec![
                 ("opus", vec!["src/payments/refunds.ts", "src/payments/refunds.test.ts"]),
-                ("opus", vec!["src/api/routes/refunds.ts"]),
-                ("haiku", vec!["docs/api/refunds.md"]),
+                // Docs about a sensitive area get the strong model too.
+                ("opus", vec!["src/api/routes/refunds.ts", "docs/api/refunds.md"]),
             ]
         );
     }
@@ -592,6 +604,13 @@ mod tests {
             file("docs/guide.md", 100),
             file("CMakeLists.txt", 100),
             file("test/fixtures/notes.md", 100),
+            file("src/__snapshots__/a.test.ts.snap", 100),
+            file("docs/intro.mdx", 100),
+            file("CLAUDE.md", 100),
+            file(".claude/agents/reviewer.md", 100),
+            file("plugin/skills/review/notes.md", 100),
+            file("test/.github/notes.md", 100),
+            file("docs/payments.md", 100),
             file("src/a.ts", 100),
             file("src/b.ts", 100),
         ];
@@ -606,6 +625,13 @@ mod tests {
         assert_eq!(model("docs/guide.md"), "haiku");
         assert_eq!(model("CMakeLists.txt"), "sonnet", ".txt files can configure builds");
         assert_eq!(model("test/fixtures/notes.md"), "haiku", "prose in a test folder doesn't run");
+        assert_eq!(model("src/__snapshots__/a.test.ts.snap"), "sonnet", "Jest evaluates snapshots");
+        assert_eq!(model("docs/intro.mdx"), "sonnet", "MDX compiles to JSX");
+        for steers_agents in ["CLAUDE.md", ".claude/agents/reviewer.md", "plugin/skills/review/notes.md"] {
+            assert_eq!(model(steers_agents), "sonnet", "{steers_agents}");
+        }
+        assert_eq!(model("test/.github/notes.md"), "sonnet", "a test without its subject in a dot folder");
+        assert_eq!(model("docs/payments.md"), "opus", "docs in a sensitive area");
         assert_eq!(plan.batches.iter().map(|b| b.files.len()).sum::<usize>(), files.len());
     }
 }

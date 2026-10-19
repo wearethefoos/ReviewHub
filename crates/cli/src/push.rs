@@ -73,7 +73,9 @@ fn caller() -> Caller {
 pub fn session_review_steps(pr: &str) -> String {
     format!(
         "run `reviewhub security-plan {pr}`. If its `mode` is `batched`, launch one general-purpose subagent per batch, \
-         all in one message, each with exactly its batch's `prompt` and on its `model`, and wait for them. Then launch \
+         all in one message, each with exactly its batch's `prompt` and on its `model`, and wait for them. When \
+         all have returned, save each batch's reply as it is: the report JSON to its `output`, the lines after \
+         `NOTES:` to its `notes` (`{{}}` and `none` for a batch without a report). Then launch \
          the security-reviewer subagent on the plan's `coordinatorModel` with only the instruction \"Review {pr} and \
          write the ReviewHub security report.\", adding \"The batch reviews are done: <the plan's planFile>.\" when \
          batched. Don't pass on your own view of the change. Run `reviewhub validate security <file>` on the report it \

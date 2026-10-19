@@ -564,12 +564,15 @@ fn plans_and_merges_a_batched_security_review() {
     assert_eq!(plan["pr"], "demo/acme-shop#128");
     let batches = plan["batches"].as_array().unwrap();
     let models: Vec<&str> = batches.iter().map(|b| b["model"].as_str().unwrap()).collect();
-    assert!(models.contains(&"fable") && models.contains(&"sonnet") && models.contains(&"haiku"), "{models:?}");
+    // The demo's docs are about refunds and its snapshots run: no batch is light enough for the light model.
+    assert_eq!(models, ["fable", "fable", "sonnet", "sonnet"]);
     for batch in batches {
         let prompt = batch["prompt"].as_str().unwrap();
         let output = batch["output"].as_str().unwrap();
         let notes = batch["notes"].as_str().unwrap();
         assert!(prompt.contains(output) && prompt.contains(notes) && prompt.contains("injection"));
+        // Batch reviewers write no files (one could overwrite another's report): they reply, and the launcher saves.
+        assert!(prompt.contains("Don't create or modify any files.") && prompt.contains("then a line `NOTES:`"));
         for file in batch["files"].as_array().unwrap() {
             assert!(prompt.contains(file["path"].as_str().unwrap()));
         }
@@ -653,7 +656,6 @@ fn plans_and_merges_a_batched_security_review() {
     elsewhere["findings"] = json!([outside]);
     std::fs::write(output_of(2), elsewhere.to_string()).unwrap();
     std::fs::write(output_of(3), "{}").unwrap();
-    std::fs::remove_file(output_of(4)).unwrap();
     let output = merge(&plan_file, &[]);
     assert!(output.status.success(), "{}", stderr(&output));
     let err = stderr(&output);
@@ -662,7 +664,6 @@ fn plans_and_merges_a_batched_security_review() {
         "it reviews commit 0000000, not the head commit",
         "finding x is in README.md, which isn't one of the batch's files",
         "is not a valid security report",
-        "cannot read",
     ]
     .iter()
     .enumerate()
@@ -675,7 +676,9 @@ fn plans_and_merges_a_batched_security_review() {
     let summary = partial["summary"].as_str().unwrap();
     assert!(summary.contains(&format!("No usable report from {} (", batches[0]["id"].as_str().unwrap())), "{summary}");
     std::fs::write(output_of(3), "not json").unwrap();
-    assert!(stderr(&merge(&plan_file, &[])).contains("is not valid JSON"));
+    std::fs::remove_file(output_of(2)).unwrap();
+    let err = stderr(&merge(&plan_file, &[]));
+    assert!(err.contains("is not valid JSON") && err.contains("cannot read"), "{err}");
 
     // The plan must still be the one for the pull request's head: not another pull request's, not a stale one, not
     // edited to drop a batch.
