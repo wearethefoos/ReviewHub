@@ -565,7 +565,7 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     let plan_dir = std::fs::read_to_string(dir.join("claude-args.plan-dir")).unwrap();
     assert!(plan_dir.trim().ends_with("/batches") && args.contains(plan_dir.trim()), "{plan_dir}");
     let git_dir = std::fs::read_to_string(dir.join("claude-args.git")).unwrap();
-    assert!(git_dir.contains("cannot use bare repository"), "git must not use the export as a repository: {git_dir}");
+    assert!(git_dir.contains("not a git repository"), "git must not use the export as a repository: {git_dir}");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
     assert!(post.body.contains("reviewhub:security"));
 

@@ -348,6 +348,9 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
         // commands: git (which Claude Code runs itself) only uses a bare repository when told to.
         // The one directory `security-plan` may create, so batch reviewers can't block a report's path.
         .env("REVIEWHUB_PLAN_DIR", report.with_file_name("batches"))
+        // No repository at all for git there: GIT_DIR names one that doesn't exist (safe.bareRepository below needs
+        // git 2.38, and some file systems turn a look-alike name into a real .git).
+        .env("GIT_DIR", work.join("no-repository"))
         .env("GIT_CONFIG_COUNT", "1")
         .env("GIT_CONFIG_KEY_0", "safe.bareRepository")
         .env("GIT_CONFIG_VALUE_0", "explicit")
