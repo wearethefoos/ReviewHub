@@ -217,7 +217,7 @@ fn export_commit(head: &str, number: u32, dir: &Path) -> Result<Vec<String>> {
         let mut content = vec![0; size + 1];
         out.read_exact(&mut content)?;
         content.pop();
-        export_file(dir, path, &content, &mut left_out)?;
+        export_file(dir, path, &content, &mut left_out);
     }
     let _ = writer.join();
     cat.wait()?;
@@ -225,15 +225,16 @@ fn export_commit(head: &str, number: u32, dir: &Path) -> Result<Vec<String>> {
 }
 
 /// Writes one exported file, never over another: on a case-insensitive file system `A.ts` and `a.ts` are one file,
-/// and the second would replace what the reviewer reads. A clash leaves the file out (the reviewer is told) rather
-/// than stopping the review, which a pull request could otherwise do on purpose.
-fn export_file(dir: &Path, path: &str, content: &[u8], left_out: &mut Vec<String>) -> Result<()> {
+/// and the second would replace what the reviewer reads. A clash, with a file or with a folder (`Src` and
+/// `src/app.ts`), leaves the file out (the reviewer is told) rather than stopping the review, which a pull request
+/// could otherwise do on purpose.
+fn export_file(dir: &Path, path: &str, content: &[u8], left_out: &mut Vec<String>) {
     let target = dir.join(path);
-    fs::create_dir_all(target.parent().unwrap_or(dir))?;
-    if crate::plan::write(&target, content).is_err() {
+    let written =
+        fs::create_dir_all(target.parent().unwrap_or(dir)).is_ok() && crate::plan::write(&target, content).is_ok();
+    if !written {
         left_out.push(path.to_string());
     }
-    Ok(())
 }
 
 /// A commit's files: the regular ones to export, as (object id, path), and the paths left out: symlinks
@@ -448,10 +449,13 @@ mod tests {
     fn leaves_out_a_file_that_clashes_with_one_already_exported() {
         let dir = crate::plan::private_dir().unwrap();
         let mut left_out = Vec::new();
-        export_file(&dir, "src/A.ts", b"first", &mut left_out).unwrap();
+        export_file(&dir, "src/A.ts", b"first", &mut left_out);
         // What a case-insensitive file system does with `src/a.ts`: the same file.
-        export_file(&dir, "src/A.ts", b"second", &mut left_out).unwrap();
-        assert_eq!(left_out, ["src/A.ts"]);
+        export_file(&dir, "src/A.ts", b"second", &mut left_out);
+        // And with `Src` then `src/b.ts`: a file where a folder must go.
+        export_file(&dir, "Src", b"file", &mut left_out);
+        export_file(&dir, "Src/b.ts", b"third", &mut left_out);
+        assert_eq!(left_out, ["src/A.ts", "Src/b.ts"]);
         assert_eq!(fs::read(dir.join("src/A.ts")).unwrap(), b"first");
         fs::remove_dir_all(dir).unwrap();
     }
