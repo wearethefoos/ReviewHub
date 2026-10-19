@@ -72,6 +72,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.repository }}#${{ github.event.pull_request.number }}
         run: |
+          # The report goes into the checkout: a file the pull request committed there mustn't pass as one.
+          rm -f reviewhub-security.json
           agent=.claude/agents/reviewhub-security-reviewer.md
           if ! instructions=$(git show "$BASE_SHA:$agent" 2>/dev/null); then
             echo "::notice::The base branch has no $agent yet; using the pull request's."
