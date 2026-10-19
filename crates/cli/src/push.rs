@@ -201,7 +201,7 @@ fn export_commit(head: &str, number: u32, dir: &Path) -> Result<Vec<String>> {
         bail!("this repository doesn't have commit {head}; run `git fetch origin pull/{number}/head` and try again");
     }
     fs::create_dir(dir)?;
-    let Tree { files, left_out } = tree_files(head)?;
+    let Tree { files, mut left_out } = tree_files(head)?;
     let mut cat =
         Command::new("git").args(["cat-file", "--batch"]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
     let oids: String = files.iter().map(|(oid, _)| format!("{oid}\n")).collect();
@@ -217,16 +217,23 @@ fn export_commit(head: &str, number: u32, dir: &Path) -> Result<Vec<String>> {
         let mut content = vec![0; size + 1];
         out.read_exact(&mut content)?;
         content.pop();
-        let target = dir.join(path);
-        fs::create_dir_all(target.parent().unwrap_or(dir))?;
-        // Never over another file: on a case-insensitive file system `A.ts` and `a.ts` are one file, and the second
-        // would replace what the reviewer reads.
-        crate::plan::write(&target, &content)
-            .with_context(|| format!("{path} collides with another file of the commit on this file system"))?;
+        export_file(dir, path, &content, &mut left_out)?;
     }
     let _ = writer.join();
     cat.wait()?;
     Ok(left_out)
+}
+
+/// Writes one exported file, never over another: on a case-insensitive file system `A.ts` and `a.ts` are one file,
+/// and the second would replace what the reviewer reads. A clash leaves the file out (the reviewer is told) rather
+/// than stopping the review, which a pull request could otherwise do on purpose.
+fn export_file(dir: &Path, path: &str, content: &[u8], left_out: &mut Vec<String>) -> Result<()> {
+    let target = dir.join(path);
+    fs::create_dir_all(target.parent().unwrap_or(dir))?;
+    if crate::plan::write(&target, content).is_err() {
+        left_out.push(path.to_string());
+    }
+    Ok(())
 }
 
 /// A commit's files: the regular ones to export, as (object id, path), and the paths left out: symlinks
@@ -258,7 +265,8 @@ fn tree_files(head: &str) -> Result<Tree> {
 /// `.git ` (Windows drops trailing dots and spaces).
 fn safe_path(path: &str) -> bool {
     !path.starts_with('/')
-        && !path.contains(['\\', ':'])
+        // Not valid UTF-8 either: two such names can decode to the same string.
+        && !path.contains(['\\', ':', char::REPLACEMENT_CHARACTER])
         && path.split('/').all(|part| {
             let name = part.trim_end_matches(['.', ' ']);
             !name.is_empty() && !name.eq_ignore_ascii_case(".git")
@@ -437,6 +445,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn leaves_out_a_file_that_clashes_with_one_already_exported() {
+        let dir = crate::plan::private_dir().unwrap();
+        let mut left_out = Vec::new();
+        export_file(&dir, "src/A.ts", b"first", &mut left_out).unwrap();
+        // What a case-insensitive file system does with `src/a.ts`: the same file.
+        export_file(&dir, "src/A.ts", b"second", &mut left_out).unwrap();
+        assert_eq!(left_out, ["src/A.ts"]);
+        assert_eq!(fs::read(dir.join("src/A.ts")).unwrap(), b"first");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn mentions_left_out_paths_only_when_there_are_some() {
         let report = Path::new("/w/reviewhub-security.json");
         let none = reviewer_prompt("o/r#1", "abc", report, &[]);
@@ -464,6 +484,7 @@ mod tests {
             "a/.GIT /hooks/x",
             "...",
             "a/ /b",
+            "x\u{FFFD}",
         ] {
             assert!(!safe_path(path), "{path}");
         }
