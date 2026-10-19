@@ -12,6 +12,7 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 
 ## Conventions
 
+- Every change ships with tests that run each line it adds or changes: Rust in `cargo test` (unit tests next to the code, CLI behaviour in `crates/cli/tests`), extension code in vitest, plugin scripts in `scripts/test-plugin-*.sh`. Before pushing, check the changed lines are covered (`cargo llvm-cov --workspace --lcov --output-path lcov.info`, `npx vitest run --coverage` in `extension/`, then `reviewhub metrics` lists uncovered changed lines). Untested code is not done.
 - All logic (report types, validation, comment format, GitHub trust rules, diff parsing, scoring) lives in `crates/core`. The CLI and the extension only do I/O and rendering. Don't reimplement core logic in TypeScript; expose it through `crates/wasm` instead.
 - Report types in `crates/core/src/model.rs` are the source of truth. Doc comments become JSON Schema descriptions that agents read. After changing them: `UPDATE_SCHEMAS=1 cargo test -p reviewhub-core schemas` and `cargo test -p reviewhub-core --features ts export_bindings`; commit `schemas/` and `extension/src/generated/` (CI checks both).
 - Optional fields: use `#[serde(default, skip_serializing_if = "Option::is_none")]` so JSON never contains `null`, and structs carry `ts(export, optional_fields)` so TypeScript types match.
