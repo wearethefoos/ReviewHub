@@ -568,12 +568,16 @@ fn plans_and_merges_a_batched_security_review() {
     for batch in batches {
         let prompt = batch["prompt"].as_str().unwrap();
         let output = batch["output"].as_str().unwrap();
-        assert!(prompt.contains(output) && prompt.contains("Cross-file notes:") && prompt.contains("injection"));
+        let notes = batch["notes"].as_str().unwrap();
+        assert!(prompt.contains(output) && prompt.contains(notes) && prompt.contains("injection"));
         for file in batch["files"].as_array().unwrap() {
             assert!(prompt.contains(file["path"].as_str().unwrap()));
         }
     }
-    assert!(dir.join("batches").is_dir());
+    // The plan is saved for the reviewer of the whole pull request.
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("batches/plan.json")).unwrap()).unwrap();
+    assert_eq!(saved, plan);
+    assert_eq!(plan["planFile"], dir.join("batches/plan.json").display().to_string());
 
     // Each batch writes a report; merging keeps one of a duplicate, the more severe.
     let security = demo()["reports"]["security"]["data"].clone();

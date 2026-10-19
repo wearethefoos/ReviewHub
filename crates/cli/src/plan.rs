@@ -32,7 +32,7 @@ fn what_to_look_for() -> &'static str {
 }
 
 /// Instructions for one batch's reviewer: complete in themselves, so any subagent can follow them.
-pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path) -> String {
+pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path, notes: &Path) -> String {
     let files: String = batch
         .files
         .iter()
@@ -58,11 +58,12 @@ pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path) -> Strin
          commit, when the fix is local and certain). Report only findings you can tie to specific lines; an empty \
          `findings` list is a valid result. Never copy a secret's value into the report. Run `reviewhub validate \
          security {out}` and fix every error.\n\
-         4. Reply with the report's path, then \"Cross-file notes:\" and one line for each thing the reviewer of the \
-         whole pull request should check across files: an assumption your files make about other code (\"routes/\
-         refunds.ts trusts req.merchantId; check that the middleware sets it from the session\"), a changed \
-         function or contract that other files rely on, or untrusted input that leaves your files. Write \"none\" \
-         when there are none.",
+         4. Write cross-file notes to {notes}: one line for each thing the reviewer of the whole pull request should \
+         check across files: an assumption your files make about other code (\"routes/refunds.ts trusts \
+         req.merchantId; check that the middleware sets it from the session\"), a changed function or contract that \
+         other files rely on, or untrusted input that leaves your files. Write \"none\" when there are none. Reply \
+         with the two paths.",
+        notes = notes.display(),
         look = what_to_look_for(),
         out = output.display(),
         id = batch.id,
@@ -70,8 +71,8 @@ pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path) -> Strin
     )
 }
 
-/// A new directory only this user can read, for the batch reports.
-fn private_dir() -> Result<PathBuf> {
+/// A new directory only this user can read.
+pub fn private_dir() -> Result<PathBuf> {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let dir = std::env::temp_dir().join(format!("reviewhub-security-{}-{nanos}", std::process::id()));
     std::fs::create_dir(&dir).with_context(|| format!("cannot create {}", dir.display()))?;
@@ -101,9 +102,16 @@ pub fn plan_json(bundle: &PullRequestBundle, models: &Models, out_dir: Option<Pa
         };
         for (i, batch) in plan.batches.iter().enumerate() {
             let output = dir.join(format!("{}.json", batch.id));
+            let notes = dir.join(format!("{}.notes.md", batch.id));
             out["batches"][i]["output"] = json!(output.display().to_string());
-            out["batches"][i]["prompt"] = json!(batch_prompt(&pr, head, batch, &output));
+            out["batches"][i]["notes"] = json!(notes.display().to_string());
+            out["batches"][i]["prompt"] = json!(batch_prompt(&pr, head, batch, &output, &notes));
         }
+        // The reviewer of the whole pull request reads the plan from here once the batches are done.
+        let plan_file = dir.join("plan.json");
+        out["planFile"] = json!(plan_file.display().to_string());
+        std::fs::write(&plan_file, serde_json::to_string_pretty(&out)?)
+            .with_context(|| format!("cannot write {}", plan_file.display()))?;
     }
     Ok(out)
 }

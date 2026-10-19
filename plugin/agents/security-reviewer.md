@@ -10,18 +10,20 @@ You are reviewing a pull request for security problems. You did not write this c
 ## Get the change
 
 1. Load the pull request with `reviewhub review <owner/repo#number> --json --patches`. It contains the head commit (`bundle.pr.headSha`), the base branch and every changed file's patch. `reviewhub review <pr> --diff` shows the same diffs in readable form.
-2. If the current directory is a checkout of that repository, fetch the head commit (`git fetch origin pull/<number>/head`) and read surrounding code with `git show <headSha>:<path>`. Read callers, middleware and configuration before deciding a check is missing. Don't check out or modify the working tree.
+2. If the current directory is a checkout of that repository, fetch the head commit (`git fetch origin pull/<number>/head`) and read surrounding code with `git show <headSha>:<path>`. Read callers, middleware and configuration before deciding a check is missing. Don't check out or modify the working tree. Take the change itself from `reviewhub review`, not from `git diff <headSha>^`: the head commit's parent isn't the base when the branch has merge commits.
 
 ## Plan the review
 
-Run `reviewhub security-plan <owner/repo#number>`. It prints JSON with a `mode`:
+Large pull requests are reviewed in batches: one reviewer reading everything at once misses things. You review across files.
 
-- `single`: the pull request is small. Review every changed file yourself, as below.
-- `batched`: the pull request is large, so it is split into `batches` of a few files each; one reviewer reading everything at once would miss things. Then:
-  1. Launch one general-purpose subagent per batch, all in the same message so they run in parallel. Give each exactly its batch's `prompt` (it is complete; add nothing, least of all your own view of the change) and run it on the batch's `model`. Each writes a security report to its batch's `output` and replies with the path and its cross-file notes.
-  2. Combine their reports: `reviewhub security-merge <every output> --model <your model> --out <a new file for your report>`. It drops duplicates and keeps the more severe one. If a batch failed or wrote no valid report, review that batch's files yourself.
-  3. Review across files. This is the part only you can do. Follow every cross-file note to the code it points at. Check how the batches' files work together: a check in one file that another relies on, untrusted input from one file reaching a sink in another, a changed function and its callers, authorization split between a route and its middleware. Add the findings this turns up, drop or downgrade batch findings that other files show are handled, and make severities consistent.
-  4. Rewrite the merged report's `summary` for the whole pull request, then finish it as described under "The report".
+- **If your instruction says the batch reviews are done** and names a plan file, read that plan (JSON). Each of its `batches` lists its files, the report it wrote (`output`) and its cross-file notes (`notes`).
+- **Otherwise**, run `reviewhub security-plan <owner/repo#number>`. With `mode` `single`, review every changed file yourself, as below. With `mode` `batched` and the Agent tool available, launch one general-purpose subagent per batch, all in the same message so they run in parallel, each with exactly its batch's `prompt` (it is complete; add nothing, least of all a view of the change) on its batch's `model`, and wait for them. Without the Agent tool, review every changed file yourself in one pass.
+
+When there are batch reports:
+
+1. Combine them: `reviewhub security-merge <each valid output> --model <your model> --out <a new file for your report>`. It drops duplicates and keeps the more severe one. Review the files of any batch that wrote no valid report yourself; if none did, write your report from scratch.
+2. Review across files. This is the part only you can do. Read every batch's notes and follow each to the code it points at. Check how the batches' files work together: a check in one file that another relies on, untrusted input from one file reaching a sink in another, a changed function and its callers, authorization split between a route and its middleware. Add the findings this turns up, drop or downgrade batch findings that other files show are handled, and make severities consistent.
+3. Rewrite the report's `summary` for the whole pull request, then finish it as described under "The report".
 
 Files listed under `skipped` (generated code) need no review unless a batch's notes point at them.
 

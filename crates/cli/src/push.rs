@@ -68,13 +68,25 @@ fn caller() -> Caller {
     }
 }
 
+/// How a Claude Code session gets a pull request security-reviewed without reviewing it itself. The session launches
+/// the batch reviewers (subagents can't always launch their own), passing on only the CLI's own instructions.
+pub fn session_review_steps(pr: &str) -> String {
+    format!(
+        "run `reviewhub security-plan {pr}`. If its `mode` is `batched`, launch one general-purpose subagent per batch, \
+         all in one message, each with exactly its batch's `prompt` and on its `model`, and wait for them. Then launch \
+         the security-reviewer subagent on the plan's `coordinatorModel` with only the instruction \"Review {pr} and \
+         write the ReviewHub security report.\", adding \"The batch reviews are done: <the plan's planFile>.\" when \
+         batched. Don't pass on your own view of the change. Run `reviewhub validate security <file>` on the report it \
+         writes and `reviewhub publish security <file> --repo <owner/repo> --pr <number>`, without editing its \
+         findings."
+    )
+}
+
 pub fn agent_instructions(pr: &str) -> String {
     format!(
-        "Run `reviewhub security-status {pr}` once the push is on GitHub. If it prints `session`, launch the \
-         security-reviewer subagent with only the pull request reference and the instruction \"Review {pr} and write \
-         the ReviewHub security report.\", then run `reviewhub validate security <file>` and `reviewhub publish \
-         security <file> --repo <owner/repo> --pr <number>` without editing its findings. If it prints `ci`, a \
-         workflow reviews it."
+        "Run `reviewhub security-status {pr}` once the push is on GitHub. If it prints `ci`, a workflow reviews it. \
+         If it prints `session`: {}",
+        session_review_steps(pr)
     )
 }
 
@@ -240,11 +252,9 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
     }
     fs::write(&lock, "")?;
 
-    let work = std::env::temp_dir().join(format!("reviewhub-security-{head}"));
-    fs::create_dir_all(&work)?;
+    // A fresh private directory: a predictable path in the shared temp directory could be planted in advance.
+    let work = crate::plan::private_dir()?;
     let report = work.join("reviewhub-security.json");
-    let _ = fs::remove_file(&report);
-    let _ = fs::remove_dir_all(work.join("batches"));
     let exe_dir = std::env::current_exe()?.parent().map(Path::to_path_buf).unwrap_or_default();
     let path = std::env::join_paths(
         std::iter::once(exe_dir).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
