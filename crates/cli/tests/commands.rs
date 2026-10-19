@@ -584,6 +584,17 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
         .env("GITHUB_TOKEN", "t"));
     assert!(!output.status.success() && stderr(&output).contains("the report is not valid"), "{}", stderr(&output));
 
+    // Claude Code that can't start is an error, and doesn't leave the commit locked as "already running".
+    let no_claude = dir.join("no-claude");
+    std::fs::create_dir_all(&no_claude).unwrap();
+    let git_path = std::process::Command::new("sh").args(["-c", "command -v git"]).output().unwrap().stdout;
+    std::os::unix::fs::symlink(String::from_utf8(git_path).unwrap().trim(), no_claude.join("git")).unwrap();
+    let output =
+        run(github.reviewhub(&["security-review", "o/r#7", "--force"]).current_dir(&repo).env("PATH", &no_claude));
+    assert!(stderr(&output).contains("running Claude Code"), "{}", stderr(&output));
+    let output = run(github.reviewhub(&["security-review", "o/r#7"]).current_dir(&repo).env("PATH", &no_claude));
+    assert!(!stdout(&output).contains("already running"), "{}", stdout(&output));
+
     // A head commit the repository doesn't have and can't fetch.
     git(&repo, &["remote", "set-url", "origin", "/nonexistent"]);
     let missing = "0123456789abcdef0123456789abcdef01234567";
