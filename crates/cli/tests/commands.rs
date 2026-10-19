@@ -639,24 +639,20 @@ fn plans_and_merges_a_batched_security_review() {
         args.extend_from_slice(extra);
         run(&mut github.reviewhub(&args))
     };
-    let merged = dir.join("merged.json");
-    let output = merge(&plan_file, &["--model", "fable", "--out", merged.to_str().unwrap()]);
+    let output = merge(&plan_file, &["--model", "fable"]);
     assert!(output.status.success() && stderr(&output).is_empty(), "{}", stderr(&output));
-    let report: Value = serde_json::from_str(&std::fs::read_to_string(&merged).unwrap()).unwrap();
+    let report: Value = serde_json::from_str(&stdout(&output)).unwrap();
     assert_eq!(report["findings"].as_array().unwrap().len(), expected);
     assert_eq!(report["scanner"], json!({ "name": "reviewhub security-reviewer", "model": "fable" }));
     assert_eq!(report["commit"], head);
     assert!(!report["summary"].as_str().unwrap().contains("No usable report"));
+    let merged = dir.join("merged.json");
+    std::fs::write(&merged, report.to_string()).unwrap();
     assert!(run(&mut github.reviewhub(&["validate", "security", merged.to_str().unwrap()])).status.success());
-    // --out only creates a file: an existing one, here the report just written, is never replaced.
-    let again = merge(&plan_file, &["--out", merged.to_str().unwrap()]);
-    assert!(!again.status.success() && stderr(&again).contains("must not exist yet"), "{}", stderr(&again));
-    assert_eq!(serde_json::from_str::<Value>(&std::fs::read_to_string(&merged).unwrap()).unwrap(), report);
-
-    // Without --out, the merged report is printed.
-    let printed = merge(&plan_file, &[]);
-    let printed: Value = serde_json::from_str(&stdout(&printed)).unwrap();
-    assert_eq!(printed["findings"], report["findings"]);
+    // It only prints: batch reviewers can run it too, and mustn't plant a file where the reviewer's report goes.
+    let out = merge(&plan_file, &["--out", merged.to_str().unwrap()]);
+    assert!(!out.status.success() && stderr(&out).contains("unexpected argument '--out'"), "{}", stderr(&out));
+    let printed: Value = serde_json::from_str(&stdout(&merge(&plan_file, &[]))).unwrap();
     assert_eq!(printed["scanner"], json!({ "name": "reviewhub security-reviewer" }));
 
     // A batch reviewer reads the author's files and could be talked into writing another batch's report: a report

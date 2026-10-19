@@ -106,8 +106,8 @@ fn new_dir(dir: &Path) -> Result<()> {
 }
 
 /// Writes a new file, readable only by this user. Never an existing file or a symlink: agents that read the pull
-/// request's code run these commands, and an injected `--out ~/.bashrc` mustn't replace anything.
-pub fn write(path: &Path, text: &str) -> Result<()> {
+/// request's code run these commands, and an injected path such as `~/.bashrc` mustn't replace anything.
+fn write(path: &Path, text: &str) -> Result<()> {
     use std::io::Write as _;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);

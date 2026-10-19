@@ -198,9 +198,6 @@ Uses GITHUB_TOKEN, or the token from `gh auth login`."
         /// The model of the reviewer combining them, for the report's scanner
         #[arg(long)]
         model: Option<String>,
-        /// Write the report to this new file instead of printing it (an existing file is never replaced)
-        #[arg(long, value_name = "FILE")]
-        out: Option<PathBuf>,
     },
     /// Check a report against its schema
     Validate {
@@ -399,17 +396,15 @@ fn run(cli: Cli) -> Result<()> {
             let models = plan::models(|name| std::env::var(name).ok());
             println!("{}", serde_json::to_string_pretty(&plan::plan_json(&bundle, &models, out_dir)?)?);
         }
-        Cmd::SecurityMerge { pr, bundle, plan: plan_file, model, out } => {
+        // It prints and never writes the report: batch reviewers may run it too, and must not be able to plant a
+        // file where the reviewer's own report goes.
+        Cmd::SecurityMerge { pr, bundle, plan: plan_file, model } => {
             let bundle = load_bundle(bundle, pr.as_deref())?;
             let (report, problems) = plan::merge(&plan_file, &bundle, model)?;
             for problem in problems {
                 eprintln!("No usable report from {problem}. Review its files yourself.");
             }
-            let report = serde_json::to_string_pretty(&report.to_value())?;
-            match out {
-                Some(out) => plan::write(&out, &report)?,
-                None => println!("{report}"),
-            }
+            println!("{}", serde_json::to_string_pretty(&report.to_value())?);
         }
         Cmd::Validate { kind, file } => {
             read_report(kind, &file)?;
