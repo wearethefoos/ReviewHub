@@ -108,7 +108,7 @@ fn new_dir(dir: &Path) -> Result<()> {
 
 /// Writes a new file, readable only by this user. Never an existing file or a symlink: agents that read the pull
 /// request's code run these commands, and an injected path such as `~/.bashrc` mustn't replace anything.
-fn write(path: &Path, text: &str) -> Result<()> {
+pub fn write(path: &Path, text: &[u8]) -> Result<()> {
     use std::io::Write as _;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -119,7 +119,7 @@ fn write(path: &Path, text: &str) -> Result<()> {
     }
     let mut file =
         options.open(path).with_context(|| format!("cannot write {} (it must not exist yet)", path.display()))?;
-    file.write_all(text.as_bytes()).with_context(|| format!("cannot write {}", path.display()))
+    file.write_all(text).with_context(|| format!("cannot write {}", path.display()))
 }
 
 /// Where the batches go. A reviewer run by `reviewhub security-review` or the CI workflow has `REVIEWHUB_PLAN_DIR`
@@ -168,7 +168,7 @@ pub fn plan_json(bundle: &PullRequestBundle, models: &Models, out_dir: Option<Pa
         // The reviewer of the whole pull request reads the plan from here once the batches are done.
         let plan_file = dir.join("plan.json");
         out["planFile"] = json!(plan_file.display().to_string());
-        write(&plan_file, &serde_json::to_string_pretty(&out)?)?;
+        write(&plan_file, serde_json::to_string_pretty(&out)?.as_bytes())?;
     }
     Ok(out)
 }
@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn says_which_file_it_cannot_write() {
         let missing = std::env::temp_dir().join("reviewhub-no-such-dir").join("plan.json");
-        let err = write(&missing, "{}").unwrap_err();
+        let err = write(&missing, b"{}").unwrap_err();
         assert!(format!("{err}").contains("cannot write") && format!("{err}").contains("reviewhub-no-such-dir"));
     }
 
@@ -285,20 +285,20 @@ mod tests {
     fn writes_new_files_only() {
         let dir = private_dir().unwrap();
         let file = dir.join("report.json");
-        write(&file, "{}").unwrap();
+        write(&file, b"{}").unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
         }
         // An existing file isn't replaced, nor is the file a symlink points to.
-        assert!(format!("{}", write(&file, "[]").unwrap_err()).contains("must not exist yet"));
+        assert!(format!("{}", write(&file, b"[]").unwrap_err()).contains("must not exist yet"));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");
         #[cfg(unix)]
         {
             let link = dir.join("link.json");
             std::os::unix::fs::symlink(&file, &link).unwrap();
-            assert!(write(&link, "[]").is_err());
+            assert!(write(&link, b"[]").is_err());
             assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");
         }
         std::fs::remove_dir_all(&dir).unwrap();

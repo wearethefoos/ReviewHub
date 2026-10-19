@@ -218,7 +218,10 @@ fn export_commit(head: &str, number: u32, dir: &Path) -> Result<()> {
         content.pop();
         let target = dir.join(path);
         fs::create_dir_all(target.parent().unwrap_or(dir))?;
-        fs::write(&target, content)?;
+        // Never over another file: on a case-insensitive file system `A.ts` and `a.ts` are one file, and the second
+        // would replace what the reviewer reads.
+        crate::plan::write(&target, &content)
+            .with_context(|| format!("{path} collides with another file of the commit on this file system"))?;
     }
     let _ = writer.join();
     cat.wait()?;
