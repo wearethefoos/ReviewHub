@@ -89,7 +89,11 @@ jobs:
             echo
             printf '%s\n' "$instructions" | awk 'NR == 1 && /^---$/ { front = 1; next } front && /^---$/ { front = 0; next } !front'
             echo "REVIEWHUB_PROMPT_END"
+            # The batch reviewer is defined by the CLI: agents passed with --agents take precedence over the pull
+            # request's .claude/agents/, which are removed as well.
+            echo "agents=$(reviewhub security-agents)"
           } >>"$GITHUB_OUTPUT"
+          rm -rf .claude/agents
       # Models: the strong one reviews sensitive files and across files, the standard one ordinary code, the light one
       # docs. Override them with the REVIEWHUB_MODEL_STRONG, _STANDARD and _LIGHT repository variables.
       - uses: anthropics/claude-code-action@v1
@@ -106,6 +110,7 @@ jobs:
           claude_args: >-
             --model ${{ vars.REVIEWHUB_MODEL_STRONG || 'opus' }}
             --add-dir ${{ runner.temp }}/reviewhub-review
+            --agents '${{ steps.prompt.outputs.agents }}'
             --allowedTools "Read,Grep,Glob,Write,Agent,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),Bash(reviewhub security-plan:*),Bash(reviewhub security-merge:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*)"
       - name: Check the report
         run: reviewhub validate security reviewhub-security.json

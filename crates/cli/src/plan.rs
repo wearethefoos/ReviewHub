@@ -23,6 +23,25 @@ pub fn models(var: impl Fn(&str) -> Option<String>) -> Models {
     }
 }
 
+/// The subagent that reviews one batch.
+pub const BATCH_AGENT: &str = "reviewhub-batch-reviewer";
+
+/// The batch reviewer's definition, for Claude Code's `--agents`. The CLI defines it, not a file: agents passed with
+/// `--agents` take precedence over `.claude/agents/`, which the pull request under review can change.
+pub fn batch_agents() -> String {
+    json!({
+        BATCH_AGENT: {
+            "description": "Reviews a few files of a pull request for security problems, following the instructions \
+                            it is given. Launched by the ReviewHub security reviewer, one per batch.",
+            "prompt": "You are one of several independent security reviewers of a pull request, each reviewing a few \
+                       of its files. You did not write the code. Follow the instructions you are given exactly, and \
+                       do not create or modify any files.",
+            "tools": ["Read", "Grep", "Glob", "Bash"],
+        }
+    })
+    .to_string()
+}
+
 /// The reviewer agent's "What to look for" section, so batch reviewers look for the same things.
 fn what_to_look_for() -> &'static str {
     let start = AGENT.find("## What to look for").expect("the agent has a What to look for section");
@@ -236,6 +255,15 @@ mod tests {
         }
         assert!(format!("{}", new_dir(&dir).unwrap_err()).contains("must not exist yet"));
         std::fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn defines_a_read_only_batch_reviewer() {
+        let agents: Value = serde_json::from_str(&batch_agents()).unwrap();
+        assert_eq!(agents[BATCH_AGENT]["tools"], json!(["Read", "Grep", "Glob", "Bash"]));
+        assert!(agents[BATCH_AGENT]["prompt"].as_str().unwrap().contains("do not create or modify any files"));
+        // Passed on a command line inside single quotes in the workflow.
+        assert!(!batch_agents().contains('\''));
     }
 
     #[test]

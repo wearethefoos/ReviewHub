@@ -165,6 +165,8 @@ only the paths and the diff, never the author's manifest. Models: REVIEWHUB_MODE
 REVIEWHUB_MODEL_STANDARD (sonnet) and REVIEWHUB_MODEL_LIGHT (haiku), as Claude Code model aliases or ids. \
 Uses GITHUB_TOKEN, or the token from `gh auth login`."
     )]
+    /// Print the batch reviewer's definition for Claude Code's --agents
+    SecurityAgents,
     SecurityPlan {
         /// owner/repo#123 or a pull request URL
         #[arg(required_unless_present = "bundle")]
@@ -391,6 +393,7 @@ fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Cmd::SecurityAgents => println!("{}", plan::batch_agents()),
         Cmd::SecurityPlan { pr, bundle, out_dir } => {
             let bundle = load_bundle(bundle, pr.as_deref())?;
             let models = plan::models(|name| std::env::var(name).ok());

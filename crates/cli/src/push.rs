@@ -260,6 +260,7 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
         .arg("-p")
         .arg(reviewer_prompt(&reference, &head, &report))
         .args(["--add-dir", &work.display().to_string()])
+        .args(["--agents", &crate::plan::batch_agents()])
         .args([
             "--allowedTools",
             "Read,Grep,Glob,Write,Agent,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),\
