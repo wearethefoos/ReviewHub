@@ -68,5 +68,6 @@ jobs:
           claude plugin validate . --strict
           claude plugin validate ./plugin --strict
       - run: scripts/test-plugin-hook.sh
+      - run: scripts/test-docs-check.sh
       - run: cargo build -p reviewhub --locked
       - run: scripts/test-plugin-shim.sh target/debug/reviewhub

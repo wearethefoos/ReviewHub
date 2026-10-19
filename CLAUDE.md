@@ -6,12 +6,13 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 
 - Rust: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
 - Extension (in `extension/`): `npm run wasm` (rebuild after any change to `crates/core` or `crates/wasm`), `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
-- Plugin: `claude plugin validate . --strict && claude plugin validate ./plugin --strict`, `scripts/test-plugin-hook.sh`, `scripts/test-plugin-shim.sh target/debug/reviewhub`.
+- Plugin: `claude plugin validate . --strict && claude plugin validate ./plugin --strict`, `scripts/test-plugin-hook.sh`, `scripts/test-plugin-shim.sh target/debug/reviewhub`, `scripts/test-docs-check.sh`.
 - Commits and PR titles follow Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `ci:`, `chore:`, …; `feat!:` for breaking changes; optional scopes `core`, `cli`, `extension`, `plugin`, `web`). release-please derives versions and CHANGELOG.md from them, so pick the type for what users notice: a user-visible change is `feat` or `fix`, not `chore`.
 - Versions: never edit them by hand. release-please bumps them in its release PR (RELEASING.md); `scripts/bump-version.sh X.Y.Z` exists for manual cases. Don't edit CHANGELOG.md either.
 
 ## Conventions
 
+- Every change ships with tests that run each line it adds or changes: Rust in `cargo test` (unit tests next to the code, CLI behaviour in `crates/cli/tests`), extension code in vitest, plugin scripts in `scripts/test-plugin-*.sh`. Before pushing, check the changed lines are covered (`cargo llvm-cov --workspace --lcov --output-path lcov.info`, `npx vitest run --coverage` in `extension/`, then `reviewhub metrics` lists uncovered changed lines). Untested code is not done.
 - All logic (report types, validation, comment format, GitHub trust rules, diff parsing, scoring) lives in `crates/core`. The CLI and the extension only do I/O and rendering. Don't reimplement core logic in TypeScript; expose it through `crates/wasm` instead.
 - Report types in `crates/core/src/model.rs` are the source of truth. Doc comments become JSON Schema descriptions that agents read. After changing them: `UPDATE_SCHEMAS=1 cargo test -p reviewhub-core schemas` and `cargo test -p reviewhub-core --features ts export_bindings`; commit `schemas/` and `extension/src/generated/` (CI checks both).
 - Optional fields: use `#[serde(default, skip_serializing_if = "Option::is_none")]` so JSON never contains `null`, and structs carry `ts(export, optional_fields)` so TypeScript types match.
@@ -21,6 +22,7 @@ Reviews agent-authored GitHub pull requests by what matters. Nothing is hosted: 
 - `reviewhub init` compiles in the plugin's skills, subagent, launcher and hook script (`crates/cli/src/init.rs`), renaming `reviewhub:x` to `reviewhub-x`. When you add a cross-reference between plugin files, check the rename list; a test fails on leftovers.
 - The briefing comment (`crates/cli/src/briefing.rs`) is posted by a trusted account, so every piece of report text goes through `esc` (no HTML, no fake report markers, no @mentions).
 - The web app is the extension's review page built with `npm run build:web`; code that touches `chrome.*` must check `isExtension()` from `src/lib/settings.ts`.
+- Keep README.md, plugin/README.md and the landing page (`extension/src/landing/Landing.tsx`) in step with what users see. A Stop hook (`scripts/docs-check.sh`) asks you to check them once whenever the branch's user-facing changes move on; answer it by updating them or saying they're current.
 - The Pages site's `index.html` is the project website (`extension/src/landing`); it forwards links with `?pr=`/`?demo` to `review.html`. Its screenshots (and the README's) are `docs/screenshots/<name>-light.png` and `-dark.png`, shown in the matching colour scheme; retake both when the review page changes visibly.
 - The demo pull request (`fixtures/demo/bundle.json`) is used by the extension, the CLI tests and the docs. Keep it realistic.
 

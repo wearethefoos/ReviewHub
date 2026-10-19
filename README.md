@@ -160,6 +160,7 @@ reviewhub validate manifest manifest.json                   # exit code 1 with r
 reviewhub metrics --lcov coverage/*.info --base origin/main > metrics.json  # coverage from lcov, complexity of changed files
 reviewhub publish security security.json --repo owner/repo --pr 123   # create or update the PR comment
 reviewhub security-review owner/repo#123                    # headless Claude Code security review, published
+reviewhub security-plan owner/repo#123                      # how the review splits into batches, and their models
 reviewhub update-check                                      # is there a newer release? (checks once a day)
 ```
 
@@ -185,11 +186,24 @@ To set up a repository:
 
 The security report comes from an agent that didn't write the change and only gets the pull request reference. In a repository set up with `reviewhub init`, it runs:
 
-- **In CI**, when the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret (each review uses API credits or your Claude subscription). `.github/workflows/reviewhub-security.yml` runs Claude Code with the security-reviewer instructions from the base branch and a read-only token; a separate job validates and publishes the report. Pull requests from forks get no secrets and are skipped.
-- **Otherwise, in the agent's session.** After opening a pull request, Claude runs `reviewhub security-status owner/repo#123`; when no workflow reviews it, Claude has the security-reviewer subagent review it and publishes the report.
+- **In CI**, when the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret (each review uses API credits or your Claude subscription). `.github/workflows/reviewhub-security.yml` runs Claude Code with the security-reviewer instructions from the base branch and a read-only token, and without the pull request's `CLAUDE.md` files, project settings, hooks, agents or MCP servers; a separate job validates and publishes the report. Pull requests from forks get no secrets and are skipped.
+- **Otherwise, from the agent's session.** After opening a pull request, Claude runs `reviewhub security-review owner/repo#123` in the background. When no workflow reviews the pull request, it starts a separate, headless Claude Code reviewer and publishes its report, so the session that wrote the change never handles the review. The reviewer reads an export of the head commit and runs no git, and none of the pull request's `CLAUDE.md` files, project settings, hooks, agents or MCP servers load. Neither do your own Claude Code settings (`~/.claude/settings.json`): their permission rules would apply to a reviewer reading untrusted code. If you configure Claude Code's API access there (an `env` block for Bedrock, Vertex or a proxy), set those as environment variables instead.
 - **On push, with the pre-push hook** (`reviewhub init --pre-push`). For branches with a review manifest from an agent session, it tells Claude to run the review (in a Claude Code session), or starts a headless Claude Code review in the background (from your terminal; log in `.git/reviewhub/security-review.log`) that publishes once the push reaches the pull request. It does nothing when CI reviews the pull request, and never blocks a push. Git hooks aren't committed: `init` installs it in your clone, and Claude Code sessions install it in theirs.
 
 By hand: `/reviewhub:security-review owner/repo#123` in Claude Code, or `reviewhub security-review owner/repo#123` in a terminal with Claude Code installed.
+
+**Large pull requests are reviewed in batches.** One reviewer reading 40 files at once misses things, so `reviewhub security-plan` splits a large pull request into batches of a few files (a file and its tests stay together; dependency changes form their own batch). One subagent reviews each batch, all in parallel (launched by the reviewer itself, in CI or `reviewhub security-review`); the reviewer then merges their reports (`reviewhub security-merge`, which refuses a plan that is not the one for the pull request's head and uses a batch's report only if it names that batch's reviewer, is on the head commit and covers only its files; batch reviewers reply with their reports and write no files) and reviews across files itself: the cross-file notes each batch leaves, checks in one file that another relies on, input from one file reaching a sink in another. Small pull requests (up to 6 files and 400 changed lines) get one pass, and a huge one at most 12 batches (they grow rather than multiply).
+
+**Each part runs on a model that fits it.** The plan uses only paths and the diff, never the author's manifest, so the author can't move a risky file onto a cheaper model:
+
+| Part | Model | Set with |
+| --- | --- | --- |
+| The reviewer: single pass, or coordinating and reviewing across files | strong (`opus`) | `REVIEWHUB_MODEL_STRONG` |
+| Batches touching authentication, authorization, cryptography, secrets, payments, migrations or CI | strong (`opus`) | `REVIEWHUB_MODEL_STRONG` |
+| Other code, configuration and dependency changes | standard (`sonnet`) | `REVIEWHUB_MODEL_STANDARD` |
+| Batches of only plain docs (not snapshots, MDX or instructions for agents) | light (`haiku`) | `REVIEWHUB_MODEL_LIGHT` |
+
+Values are Claude Code model aliases (`fable`, `opus`, `sonnet`, `haiku`) or model ids; `REVIEWHUB_MODEL_STRONG=fable`, for example, puts Fable on the hard parts. Set them in your environment, or as repository variables (Settings → Secrets and variables → Actions → Variables) for the CI review.
 
 ## Coverage and quality
 

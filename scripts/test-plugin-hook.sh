@@ -12,7 +12,7 @@ failures=0
 expect() {
   local name=$1 project=$2 input=$3 want=$4 got
   got=$(printf '%s' "$input" | CLAUDE_PROJECT_DIR="$project" "$hook")
-  if { [ "$want" = reminds ] && [[ "$got" == *review-manifest* ]] && [[ "$got" == *security-status* ]]; } || { [ "$want" = silent ] && [ -z "$got" ]; }; then
+  if { [ "$want" = reminds ] && [[ "$got" == *review-manifest* ]] && [[ "$got" == *security-review* ]]; } || { [ "$want" = silent ] && [ -z "$got" ]; }; then
     echo "ok   $name"
   else
     echo "FAIL $name: expected $want, got: $got"

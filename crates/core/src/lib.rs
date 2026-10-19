@@ -11,6 +11,7 @@ pub mod git;
 pub mod github;
 pub mod lcov;
 pub mod model;
+pub mod plan;
 pub mod reports;
 pub mod review;
 pub mod secrets;

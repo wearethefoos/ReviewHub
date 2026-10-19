@@ -5,6 +5,7 @@ mod briefing;
 mod github;
 mod init;
 mod metrics;
+mod plan;
 mod push;
 mod render;
 mod stacks;
@@ -156,6 +157,48 @@ turn it off too."
     /// The git pre-push hook installed by `reviewhub init` (reads git's pre-push input on stdin)
     #[command(hide = true)]
     PrePush { remote: Option<String>, url: Option<String> },
+    /// Print the batch reviewer's definition for Claude Code's --agents
+    SecurityAgents,
+    /// Plan a pull request's security review: one pass, or batches of files for subagents, with a model for each
+    #[command(
+        after_help = "Prints JSON. A small pull request is reviewed in one pass; a large one is split into batches, \
+each with complete instructions (`prompt`), a report path (`output`) and a model, for one subagent each. The plan uses \
+only the paths and the diff, never the author's manifest. Models: REVIEWHUB_MODEL_STRONG (default opus), \
+REVIEWHUB_MODEL_STANDARD (sonnet) and REVIEWHUB_MODEL_LIGHT (haiku), as Claude Code model aliases or ids. \
+Uses GITHUB_TOKEN, or the token from `gh auth login`."
+    )]
+    SecurityPlan {
+        /// owner/repo#123 or a pull request URL
+        #[arg(required_unless_present = "bundle")]
+        pr: Option<String>,
+        /// Read a saved bundle instead of GitHub
+        #[arg(long, value_name = "FILE", conflicts_with = "pr")]
+        bundle: Option<PathBuf>,
+        /// New directory for the batches' reports; it must not exist yet [default: a new private temporary directory]
+        #[arg(long, value_name = "DIR")]
+        out_dir: Option<PathBuf>,
+    },
+    /// Combine the batches' security reports into one, for the review across files
+    #[command(
+        after_help = "Checks the plan is still the one for the pull request's head and that each batch's report \
+                      is by its batch's reviewer, on the head commit and about the batch's files; reads them from \
+                      the plan's directory, drops duplicate findings (keeping the more severe), makes ids unique and \
+                      prints the report. Batches without a usable report are listed on stderr and in the summary."
+    )]
+    SecurityMerge {
+        /// owner/repo#123 or a pull request URL
+        #[arg(required_unless_present = "bundle")]
+        pr: Option<String>,
+        /// Read a saved bundle instead of GitHub
+        #[arg(long, value_name = "FILE", conflicts_with = "pr")]
+        bundle: Option<PathBuf>,
+        /// The plan.json `reviewhub security-plan` wrote
+        #[arg(long, value_name = "FILE")]
+        plan: PathBuf,
+        /// The model of the reviewer combining them, for the report's scanner
+        #[arg(long)]
+        model: Option<String>,
+    },
     /// Check a report against its schema
     Validate {
         #[arg(value_parser = parse_kind, value_name = "manifest|security|metrics")]
@@ -346,6 +389,23 @@ fn run(cli: Cli) -> Result<()> {
                     );
                 }
             }
+        }
+        Cmd::SecurityAgents => println!("{}", plan::batch_agents()),
+        Cmd::SecurityPlan { pr, bundle, out_dir } => {
+            let bundle = load_bundle(bundle, pr.as_deref())?;
+            let models = plan::models(|name| std::env::var(name).ok());
+            let out_dir = plan::out_dir(out_dir, std::env::var_os("REVIEWHUB_PLAN_DIR").map(PathBuf::from))?;
+            println!("{}", serde_json::to_string_pretty(&plan::plan_json(&bundle, &models, out_dir)?)?);
+        }
+        // It prints and never writes the report: batch reviewers may run it too, and must not be able to plant a
+        // file where the reviewer's own report goes.
+        Cmd::SecurityMerge { pr, bundle, plan: plan_file, model } => {
+            let bundle = load_bundle(bundle, pr.as_deref())?;
+            let (report, problems) = plan::merge(&plan_file, &bundle, model)?;
+            for problem in problems {
+                eprintln!("No usable report from {problem}. Review its files yourself.");
+            }
+            println!("{}", serde_json::to_string_pretty(&report.to_value())?);
         }
         Cmd::Validate { kind, file } => {
             read_report(kind, &file)?;

@@ -179,12 +179,13 @@ export function Landing() {
             alt="Security findings, each with a suggested fix as a patch"
           >
             <p>
-              A separate reviewer gets only the pull request, never the author&apos;s conversation. Each finding comes with a patch to apply or a prompt to
-              hand to an agent.
+              A separate reviewer gets only the pull request, never the author&apos;s conversation. Large pull requests are reviewed in two stages:
+              subagents take small batches of files, on Opus, Sonnet or Haiku depending on the risk, then the reviewer checks how they fit together. Each
+              finding comes with a patch to apply or a prompt to hand to an agent.
             </p>
             <p>
-              It runs in CI when you add an Anthropic key, in the agent&apos;s own session otherwise, or on <code className="font-mono text-sm">git push</code>{" "}
-              with the pre-push hook. Reports that contain anything credential-shaped are rejected before they&apos;re posted.
+              It runs in CI when you add an Anthropic key, otherwise as a separate headless Claude Code process started from the agent&apos;s session,
+              or on <code className="font-mono text-sm">git push</code> with the pre-push hook. Reports that contain anything credential-shaped are rejected before they&apos;re posted.
             </p>
           </Spotlight>
 
@@ -267,7 +268,7 @@ export function Landing() {
             </div>
             <ul className="space-y-3 text-[15px] leading-relaxed text-header-fg/85">
               <Check>Claude Code publishes a review manifest with every pull request it opens, including in cloud sessions from your phone.</Check>
-              <Check>An independent security review runs on every pull request: in CI, in the session, or on push.</Check>
+              <Check>An independent security review runs on every pull request: in CI, from the session, or on push.</Check>
               <Check>CI publishes coverage and complexity for the test stacks it finds.</Check>
               <Check>Every pull request gets a briefing comment for reviewers.</Check>
             </ul>

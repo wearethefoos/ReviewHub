@@ -373,7 +373,7 @@ fn fake_claude(dir: &Path, report: &Path) -> String {
     let bin = dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
+        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\ncat src/app.ts > '{log}.app' 2>/dev/null\ngit rev-parse --git-dir > '{log}.git' 2>&1\necho \"$REVIEWHUB_PLAN_DIR\" > '{log}.plan-dir'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
         log = dir.join("claude-args").display(),
         report = report.display()
     );
@@ -429,9 +429,10 @@ fn agent_pushes_get_security_reviewed() {
         assert!(output.status.success(), "a push is never blocked");
         stderr(&output)
     };
-    assert!(
-        pre_push(&[("CLAUDECODE", "1")], SAFE_PATH).contains("Review o/r#7 and write the ReviewHub security report.")
-    );
+    // In a Claude Code session: the session runs the headless review, which publishes, and doesn't review itself.
+    let told = pre_push(&[("CLAUDECODE", "1")], SAFE_PATH);
+    assert!(told.contains("run `reviewhub security-review o/r#7` in the background"), "{told}");
+    assert!(told.contains("Don't review the change or publish a security report yourself."), "{told}");
     assert_eq!(pre_push(&[("CI", "true")], SAFE_PATH), "");
     // From a terminal without Claude Code installed: says how to get the review instead.
     assert!(pre_push(&[], SAFE_PATH).contains("couldn't be started: Claude Code (`claude`) isn't installed"));
@@ -504,7 +505,27 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(!dir.join("claude-args").exists());
 
     // Nobody has: runs Claude Code, then validates and publishes what it wrote.
-    let head = format!("c0ffee{}", std::process::id());
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    std::fs::write(repo.join("src/app.ts"), "export const app = 1;\n\n// end\n").unwrap();
+    std::os::unix::fs::symlink("/etc/passwd", repo.join("src/passwords")).unwrap();
+    // The pull request's .gitattributes can't hide a file from the reviewer.
+    std::fs::write(repo.join("src/hidden.ts"), "export {};\n").unwrap();
+    std::fs::write(repo.join(".gitattributes"), "src/hidden.ts export-ignore\n").unwrap();
+    // Laid out as a bare repository, whose config could run commands when git runs in the export.
+    for dir in ["objects/info", "refs/heads"] {
+        std::fs::create_dir_all(repo.join(dir)).unwrap();
+        std::fs::write(repo.join(dir).join("keep"), "").unwrap();
+    }
+    std::fs::write(repo.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(repo.join("config"), "[core]\n\tbare = true\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-q", "-m", "head"]);
+    let head = String::from_utf8(
+        std::process::Command::new("git").args(["rev-parse", "HEAD"]).current_dir(&repo).output().unwrap().stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_string();
     let skipped = check_runs(&head);
     let github = demo_github_at(
         &head,
@@ -527,6 +548,26 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(stdout(&output).contains("Published the security report: https://github.com/o/r/pull/7#issuecomment-2"));
     let args = std::fs::read_to_string(dir.join("claude-args")).unwrap();
     assert!(args.contains(&format!("Review o/r#7, head commit {head}")) && args.contains("--allowedTools"), "{args}");
+    // The batch reviewer comes from the CLI, not from an agent file the pull request could change.
+    assert!(args.contains("--agents {\"reviewhub-batch-reviewer\""), "{args}");
+    // Nor do the checkout's project settings, hooks or agents.
+    assert!(args.contains("--setting-sources  --strict-mcp-config"), "no settings sources at all: {args}");
+    // The reviewer runs no git: it reads the head commit's files, exported without symlinks, then removed.
+    assert!(!args.contains("Bash(git"), "{args}");
+    let cwd = std::fs::read_to_string(dir.join("claude-args.cwd")).unwrap();
+    assert!(cwd.trim().ends_with("/head"), "{cwd}");
+    assert!(!Path::new(cwd.trim()).exists(), "the export is removed afterwards");
+    let files = std::fs::read_to_string(dir.join("claude-args.files")).unwrap();
+    assert!(files.contains("./src/app.ts") && files.contains("./src/hidden.ts"), "{files}");
+    assert!(!files.contains("passwords"), "{files}");
+    // The reviewer is told what was left out, so it reads it from the diff.
+    assert!(args.contains("are not in the working directory") && args.contains(r#"["src/passwords"]"#), "{args}");
+    let app = std::fs::read_to_string(dir.join("claude-args.app")).unwrap();
+    assert_eq!(app, "export const app = 1;\n\n// end\n", "files are exported byte for byte");
+    let plan_dir = std::fs::read_to_string(dir.join("claude-args.plan-dir")).unwrap();
+    assert!(plan_dir.trim().ends_with("/batches") && args.contains(plan_dir.trim()), "{plan_dir}");
+    let git_dir = std::fs::read_to_string(dir.join("claude-args.git")).unwrap();
+    assert!(git_dir.contains("not a git repository"), "git must not use the export as a repository: {git_dir}");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
     assert!(post.body.contains("reviewhub:security"));
 
@@ -543,9 +584,216 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
         .env("GITHUB_TOKEN", "t"));
     assert!(!output.status.success() && stderr(&output).contains("the report is not valid"), "{}", stderr(&output));
 
+    // Claude Code that can't start is an error, and doesn't leave the commit locked as "already running".
+    let no_claude = dir.join("no-claude");
+    std::fs::create_dir_all(&no_claude).unwrap();
+    let git_path = std::process::Command::new("sh").args(["-c", "command -v git"]).output().unwrap().stdout;
+    std::os::unix::fs::symlink(String::from_utf8(git_path).unwrap().trim(), no_claude.join("git")).unwrap();
+    let output =
+        run(github.reviewhub(&["security-review", "o/r#7", "--force"]).current_dir(&repo).env("PATH", &no_claude));
+    assert!(stderr(&output).contains("running Claude Code"), "{}", stderr(&output));
+    let output = run(github.reviewhub(&["security-review", "o/r#7"]).current_dir(&repo).env("PATH", &no_claude));
+    assert!(!stdout(&output).contains("already running"), "{}", stdout(&output));
+
+    // A head commit the repository doesn't have and can't fetch.
+    git(&repo, &["remote", "set-url", "origin", "/nonexistent"]);
+    let missing = "0123456789abcdef0123456789abcdef01234567";
+    let github = demo_github_at(missing, vec![(&check_runs(missing), 200, runs("completed", json!("skipped")))]);
+    let output = run(github.reviewhub(&["security-review", "o/r#7"]).current_dir(&repo).env("PATH", &path));
+    assert!(stderr(&output).contains(&format!("doesn't have commit {missing}")), "{}", stderr(&output));
+
     let output = run(&mut github.reviewhub(&["security-review", "nonsense"]));
     assert!(stderr(&output).contains("expected owner/repo#123"));
     let _ = std::fs::remove_dir_all(dir);
     let _ = std::fs::remove_dir_all(repo);
     let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("reviewhub-security-{head}")));
+}
+
+#[test]
+fn plans_and_merges_a_batched_security_review() {
+    let github = MockGitHub::start(vec![]);
+    let dir = temp_dir("plan");
+    let output = run(github
+        .reviewhub(&["security-plan", "--bundle", DEMO, "--out-dir", dir.join("batches").to_str().unwrap()])
+        .env("REVIEWHUB_MODEL_STRONG", "fable"));
+    assert!(output.status.success(), "{}", stderr(&output));
+    let plan: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(plan["mode"], "batched");
+    assert_eq!(plan["coordinatorModel"], "fable");
+    assert_eq!(plan["pr"], "demo/acme-shop#128");
+    let batches = plan["batches"].as_array().unwrap();
+    let models: Vec<&str> = batches.iter().map(|b| b["model"].as_str().unwrap()).collect();
+    // The demo's docs are about refunds and its snapshots run: no batch is light enough for the light model.
+    assert_eq!(models, ["fable", "fable", "sonnet", "sonnet"]);
+    for batch in batches {
+        let prompt = batch["prompt"].as_str().unwrap();
+        let output = batch["output"].as_str().unwrap();
+        let notes = batch["notes"].as_str().unwrap();
+        assert!(prompt.contains(output) && prompt.contains(notes) && prompt.contains("injection"));
+        // Batch reviewers write no files (one could overwrite another's report): they reply, and the launcher saves.
+        assert!(prompt.contains("Don't create or modify any files.") && prompt.contains("then a line `NOTES:`"));
+        // Replies are saved as they are, so they must be the validated report (a trial run lost `version`).
+        assert!(prompt.contains("`version` \"1\"") && prompt.contains("exactly as it passed validation"));
+        for file in batch["files"].as_array().unwrap() {
+            assert!(prompt.contains(file["path"].as_str().unwrap()));
+        }
+    }
+    // With REVIEWHUB_PLAN_DIR set, as for reviewers, no other --out-dir is accepted.
+    let pinned = run(github
+        .reviewhub(&["security-plan", "--bundle", DEMO, "--out-dir", dir.join("elsewhere").to_str().unwrap()])
+        .env("REVIEWHUB_PLAN_DIR", dir.join("pinned")));
+    assert!(!pinned.status.success() && stderr(&pinned).contains("--out-dir must be"), "{}", stderr(&pinned));
+    assert!(!dir.join("elsewhere").exists());
+
+    // The batch reviewer's definition, for the workflow's --agents.
+    let agents: Value = serde_json::from_str(&stdout(&run(&mut github.reviewhub(&["security-agents"])))).unwrap();
+    assert_eq!(agents["reviewhub-batch-reviewer"]["tools"], json!(["Read", "Grep", "Glob", "Bash"]));
+    for batch in batches {
+        assert!(batch["prompt"].as_str().unwrap().contains("Don't create or modify any files."));
+    }
+
+    // A directory that already exists could hold planted reports.
+    let again = run(&mut github.reviewhub(&[
+        "security-plan",
+        "--bundle",
+        DEMO,
+        "--out-dir",
+        dir.join("batches").to_str().unwrap(),
+    ]));
+    assert!(!again.status.success() && stderr(&again).contains("it must not exist yet"), "{}", stderr(&again));
+    // Paths are quoted in the instructions.
+    assert!(batches[0]["prompt"].as_str().unwrap().contains("- \"src/"), "{}", batches[0]["prompt"]);
+
+    // The plan is saved for the reviewer of the whole pull request.
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("batches/plan.json")).unwrap()).unwrap();
+    assert_eq!(saved, plan);
+    assert_eq!(plan["planFile"], dir.join("batches/plan.json").display().to_string());
+
+    // Each batch writes a report about its files; merging keeps one of a duplicate, the more severe.
+    let security = demo()["reports"]["security"]["data"].clone();
+    let findings = security["findings"].as_array().unwrap();
+    let head = plan["headSha"].as_str().unwrap();
+    let report_for = |batch: &Value| {
+        let files: Vec<&str> = batch["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
+        let mut report = security.clone();
+        report["scanner"] =
+            json!({ "name": format!("reviewhub security-reviewer ({})", batch["id"].as_str().unwrap()) });
+        report["commit"] = json!(head);
+        report["findings"] =
+            json!(findings.iter().filter(|f| files.contains(&f["file"].as_str().unwrap())).collect::<Vec<_>>());
+        report
+    };
+    let with_findings = batches.iter().position(|b| !report_for(b)["findings"].as_array().unwrap().is_empty()).unwrap();
+    let expected = findings.len();
+    for (i, batch) in batches.iter().enumerate() {
+        let mut report = report_for(batch);
+        if i == with_findings {
+            let mut duplicate = report["findings"][0].clone();
+            duplicate["severity"] = json!("info");
+            report["findings"].as_array_mut().unwrap().push(duplicate);
+        }
+        std::fs::write(batch["output"].as_str().unwrap(), report.to_string()).unwrap();
+    }
+    let plan_file = dir.join("batches/plan.json");
+    let merge = |plan: &Path, extra: &[&str]| {
+        let mut args = vec!["security-merge", "--bundle", DEMO, "--plan", plan.to_str().unwrap()];
+        args.extend_from_slice(extra);
+        run(&mut github.reviewhub(&args))
+    };
+    let output = merge(&plan_file, &["--model", "fable"]);
+    assert!(output.status.success() && stderr(&output).is_empty(), "{}", stderr(&output));
+    let report: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(report["findings"].as_array().unwrap().len(), expected);
+    assert_eq!(report["scanner"], json!({ "name": "reviewhub security-reviewer", "model": "fable" }));
+    assert_eq!(report["commit"], head);
+    assert!(!report["summary"].as_str().unwrap().contains("No usable report"));
+    let merged = dir.join("merged.json");
+    std::fs::write(&merged, report.to_string()).unwrap();
+    assert!(run(&mut github.reviewhub(&["validate", "security", merged.to_str().unwrap()])).status.success());
+    // It only prints: batch reviewers can run it too, and mustn't plant a file where the reviewer's report goes.
+    let out = merge(&plan_file, &["--out", merged.to_str().unwrap()]);
+    assert!(!out.status.success() && stderr(&out).contains("unexpected argument '--out'"), "{}", stderr(&out));
+    let printed: Value = serde_json::from_str(&stdout(&merge(&plan_file, &[]))).unwrap();
+    assert_eq!(printed["scanner"], json!({ "name": "reviewhub security-reviewer" }));
+
+    // A batch reviewer reads the author's files and could be talked into writing another batch's report: a report
+    // that isn't by its batch's reviewer, on the head commit and about its batch's files isn't used.
+    let output_of = |i: usize| PathBuf::from(batches[i]["output"].as_str().unwrap());
+    let mut forged = report_for(&batches[0]);
+    forged["scanner"]["name"] = json!("reviewhub security-reviewer (batch-9)");
+    std::fs::write(output_of(0), forged.to_string()).unwrap();
+    let mut stale = report_for(&batches[1]);
+    stale["commit"] = json!("0000000");
+    std::fs::write(output_of(1), stale.to_string()).unwrap();
+    let mut elsewhere = report_for(&batches[2]);
+    let mut outside = findings[0].clone();
+    (outside["id"], outside["file"]) = (json!("x"), json!("README.md"));
+    elsewhere["findings"] = json!([outside]);
+    std::fs::write(output_of(2), elsewhere.to_string()).unwrap();
+    std::fs::write(output_of(3), "{}").unwrap();
+    let output = merge(&plan_file, &[]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let err = stderr(&output);
+    for (i, reason) in [
+        "its scanner is \"reviewhub security-reviewer (batch-9)\"",
+        "it reviews commit 0000000, not the head commit",
+        "finding x is in README.md, which isn't one of the batch's files",
+        "is not a valid security report",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = batches[i]["id"].as_str().unwrap();
+        assert!(err.contains(&format!("No usable report from {id} (")) && err.contains(reason), "{reason}: {err}");
+    }
+    assert!(err.contains("Review its files yourself."), "{err}");
+    let partial: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let summary = partial["summary"].as_str().unwrap();
+    assert!(summary.contains(&format!("No usable report from {} (", batches[0]["id"].as_str().unwrap())), "{summary}");
+    std::fs::write(output_of(3), "not json").unwrap();
+    std::fs::remove_file(output_of(2)).unwrap();
+    let err = stderr(&merge(&plan_file, &[]));
+    assert!(err.contains("is not valid JSON") && err.contains("cannot read"), "{err}");
+
+    // The plan must still be the one for the pull request's head: not another pull request's, not a stale one, not
+    // edited to drop a batch.
+    let tampered = |name: &str, change: &dyn Fn(&mut Value)| {
+        let mut changed = plan.clone();
+        change(&mut changed);
+        let file = dir.join(name);
+        std::fs::write(&file, changed.to_string()).unwrap();
+        stderr(&merge(&file, &[]))
+    };
+    assert!(
+        tampered("other.json", &|p| p["pr"] = json!("demo/other#1")).contains("is not a plan for demo/acme-shop#128")
+    );
+    assert!(tampered("stale.json", &|p| p["headSha"] = json!("abc")).contains("plan the review again"));
+    let dropped = tampered("dropped.json", &|p| {
+        p["batches"].as_array_mut().unwrap().pop();
+    });
+    assert!(dropped.contains("doesn't match demo/acme-shop#128's changed files"), "{dropped}");
+    let renamed = tampered("renamed.json", &|p| p["batches"][0]["files"][0]["path"] = json!("README.md"));
+    assert!(renamed.contains("doesn't match"), "{renamed}");
+    assert!(stderr(&merge(&dir.join("missing.json"), &[])).contains("cannot read"));
+    std::fs::write(dir.join("broken.json"), "plan").unwrap();
+    assert!(stderr(&merge(&dir.join("broken.json"), &[])).contains("is not valid JSON"));
+
+    // A small pull request is reviewed in one pass: no batches, no directory.
+    let mut small = demo();
+    small["files"] = json!([demo()["files"][0], demo()["files"][1]]);
+    let small_bundle = dir.join("small.json");
+    std::fs::write(&small_bundle, small.to_string()).unwrap();
+    let output = run(&mut github.reviewhub(&["security-plan", "--bundle", small_bundle.to_str().unwrap()]));
+    let single: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!((single["mode"].as_str(), single["batches"].as_array().map(Vec::len)), (Some("single"), Some(0)));
+    assert!(single.get("planFile").is_none());
+
+    // Without --out-dir, the batches get a new private directory.
+    let output = run(&mut github.reviewhub(&["security-plan", "--bundle", DEMO]));
+    let fresh: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let plan_file = PathBuf::from(fresh["planFile"].as_str().unwrap());
+    assert!(plan_file.is_file() && plan_file.parent().unwrap() != dir.join("batches"));
+    std::fs::remove_dir_all(plan_file.parent().unwrap()).unwrap();
+
+    let _ = std::fs::remove_dir_all(dir);
 }

@@ -65,6 +65,11 @@ static CONFIG: LazyLock<RegexSet> = LazyLock::new(|| {
     ])
 });
 
+/// Generated code (snapshots, bundles, vendored and generated sources), as opposed to lockfiles.
+pub fn is_generated_code(path: &str) -> bool {
+    GENERATED.is_match(path)
+}
+
 /// Best-effort role detection from the path alone.
 pub fn detect_role(path: &str) -> FileRole {
     let name = path.rsplit('/').next().unwrap_or(path);
