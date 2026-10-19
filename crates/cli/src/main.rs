@@ -394,6 +394,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::SecurityPlan { pr, bundle, out_dir } => {
             let bundle = load_bundle(bundle, pr.as_deref())?;
             let models = plan::models(|name| std::env::var(name).ok());
+            let out_dir = plan::out_dir(out_dir, std::env::var_os("REVIEWHUB_PLAN_DIR").map(PathBuf::from))?;
             println!("{}", serde_json::to_string_pretty(&plan::plan_json(&bundle, &models, out_dir)?)?);
         }
         // It prints and never writes the report: batch reviewers may run it too, and must not be able to plant a

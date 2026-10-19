@@ -373,7 +373,7 @@ fn fake_claude(dir: &Path, report: &Path) -> String {
     let bin = dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\ncat src/app.ts > '{log}.app' 2>/dev/null\ngit rev-parse --git-dir > '{log}.git' 2>&1\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
+        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\ncat src/app.ts > '{log}.app' 2>/dev/null\ngit rev-parse --git-dir > '{log}.git' 2>&1\necho \"$REVIEWHUB_PLAN_DIR\" > '{log}.plan-dir'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
         log = dir.join("claude-args").display(),
         report = report.display()
     );
@@ -562,6 +562,8 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(!files.contains("passwords"), "{files}");
     let app = std::fs::read_to_string(dir.join("claude-args.app")).unwrap();
     assert_eq!(app, "export const app = 1;\n\n// end\n", "files are exported byte for byte");
+    let plan_dir = std::fs::read_to_string(dir.join("claude-args.plan-dir")).unwrap();
+    assert!(plan_dir.trim().ends_with("/batches") && args.contains(plan_dir.trim()), "{plan_dir}");
     let git_dir = std::fs::read_to_string(dir.join("claude-args.git")).unwrap();
     assert!(git_dir.contains("cannot use bare repository"), "git must not use the export as a repository: {git_dir}");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
@@ -623,6 +625,13 @@ fn plans_and_merges_a_batched_security_review() {
             assert!(prompt.contains(file["path"].as_str().unwrap()));
         }
     }
+    // With REVIEWHUB_PLAN_DIR set, as for reviewers, no other --out-dir is accepted.
+    let pinned = run(github
+        .reviewhub(&["security-plan", "--bundle", DEMO, "--out-dir", dir.join("elsewhere").to_str().unwrap()])
+        .env("REVIEWHUB_PLAN_DIR", dir.join("pinned")));
+    assert!(!pinned.status.success() && stderr(&pinned).contains("--out-dir must be"), "{}", stderr(&pinned));
+    assert!(!dir.join("elsewhere").exists());
+
     // The batch reviewer's definition, for the workflow's --agents.
     let agents: Value = serde_json::from_str(&stdout(&run(&mut github.reviewhub(&["security-agents"])))).unwrap();
     assert_eq!(agents["reviewhub-batch-reviewer"]["tools"], json!(["Read", "Grep", "Glob", "Bash"]));

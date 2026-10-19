@@ -353,6 +353,7 @@ mod tests {
         for guard in [
             "--setting-sources user",
             "--strict-mcp-config",
+            "REVIEWHUB_PLAN_DIR: ${{ runner.temp }}/reviewhub-review/batches",
             "--agents '${{ steps.prompt.outputs.agents }}'",
             "rm -rf .claude/agents",
         ] {

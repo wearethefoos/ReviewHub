@@ -122,6 +122,18 @@ fn write(path: &Path, text: &str) -> Result<()> {
     file.write_all(text.as_bytes()).with_context(|| format!("cannot write {}", path.display()))
 }
 
+/// Where the batches go. A reviewer run by `reviewhub security-review` or the CI workflow has `REVIEWHUB_PLAN_DIR`
+/// set, and then only that directory is allowed: batch reviewers can run this command too, and mustn't create a
+/// directory where a report has to be written.
+pub fn out_dir(given: Option<PathBuf>, pinned: Option<PathBuf>) -> Result<Option<PathBuf>> {
+    match (given, pinned) {
+        (Some(given), Some(pinned)) if given != pinned => {
+            bail!("--out-dir must be {} here (REVIEWHUB_PLAN_DIR)", pinned.display())
+        }
+        (given, pinned) => Ok(pinned.or(given)),
+    }
+}
+
 /// A new directory only this user can read.
 pub fn private_dir() -> Result<PathBuf> {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
@@ -256,6 +268,17 @@ mod tests {
         let missing = std::env::temp_dir().join("reviewhub-no-such-dir").join("plan.json");
         let err = write(&missing, "{}").unwrap_err();
         assert!(format!("{err}").contains("cannot write") && format!("{err}").contains("reviewhub-no-such-dir"));
+    }
+
+    #[test]
+    fn keeps_to_the_pinned_plan_directory() {
+        let (a, b) = (PathBuf::from("/w/batches"), PathBuf::from("/w/reviewhub-security.json"));
+        assert_eq!(out_dir(None, None).unwrap(), None);
+        assert_eq!(out_dir(Some(b.clone()), None).unwrap(), Some(b.clone()));
+        assert_eq!(out_dir(None, Some(a.clone())).unwrap(), Some(a.clone()));
+        assert_eq!(out_dir(Some(a.clone()), Some(a.clone())).unwrap(), Some(a.clone()));
+        let err = out_dir(Some(b), Some(a)).unwrap_err();
+        assert!(format!("{err}").contains("--out-dir must be /w/batches here"), "{err}");
     }
 
     #[test]

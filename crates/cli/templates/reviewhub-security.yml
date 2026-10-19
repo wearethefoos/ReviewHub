@@ -106,6 +106,8 @@ jobs:
           REVIEWHUB_MODEL_STRONG: ${{ vars.REVIEWHUB_MODEL_STRONG }}
           REVIEWHUB_MODEL_STANDARD: ${{ vars.REVIEWHUB_MODEL_STANDARD }}
           REVIEWHUB_MODEL_LIGHT: ${{ vars.REVIEWHUB_MODEL_LIGHT }}
+          # The one directory `reviewhub security-plan` may create, so batch reviewers can't block a report's path.
+          REVIEWHUB_PLAN_DIR: ${{ runner.temp }}/reviewhub-review/batches
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
