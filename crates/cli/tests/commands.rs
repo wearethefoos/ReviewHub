@@ -373,7 +373,7 @@ fn fake_claude(dir: &Path, report: &Path) -> String {
     let bin = dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\ncat src/app.ts > '{log}.app' 2>/dev/null\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
+        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\ncat src/app.ts > '{log}.app' 2>/dev/null\ngit rev-parse --git-dir > '{log}.git' 2>&1\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
         log = dir.join("claude-args").display(),
         report = report.display()
     );
@@ -511,6 +511,13 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     // The pull request's .gitattributes can't hide a file from the reviewer.
     std::fs::write(repo.join("src/hidden.ts"), "export {};\n").unwrap();
     std::fs::write(repo.join(".gitattributes"), "src/hidden.ts export-ignore\n").unwrap();
+    // Laid out as a bare repository, whose config could run commands when git runs in the export.
+    for dir in ["objects/info", "refs/heads"] {
+        std::fs::create_dir_all(repo.join(dir)).unwrap();
+        std::fs::write(repo.join(dir).join("keep"), "").unwrap();
+    }
+    std::fs::write(repo.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(repo.join("config"), "[core]\n\tbare = true\n").unwrap();
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-q", "-m", "head"]);
     let head = String::from_utf8(
@@ -555,6 +562,8 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(!files.contains("passwords"), "{files}");
     let app = std::fs::read_to_string(dir.join("claude-args.app")).unwrap();
     assert_eq!(app, "export const app = 1;\n\n// end\n", "files are exported byte for byte");
+    let git_dir = std::fs::read_to_string(dir.join("claude-args.git")).unwrap();
+    assert!(git_dir.contains("cannot use bare repository"), "git must not use the export as a repository: {git_dir}");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
     assert!(post.body.contains("reviewhub:security"));
 

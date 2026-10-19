@@ -344,6 +344,11 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
     let status = Command::new("claude")
         .current_dir(&checkout)
         .stdin(Stdio::null())
+        // The export holds the pull request's files, which can be laid out as a bare repository whose config runs
+        // commands: git (which Claude Code runs itself) only uses a bare repository when told to.
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "safe.bareRepository")
+        .env("GIT_CONFIG_VALUE_0", "explicit")
         .arg("-p")
         .arg(reviewer_prompt(&reference, &head, &report))
         .args(["--add-dir", &work.display().to_string()])
