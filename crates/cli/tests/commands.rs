@@ -551,7 +551,7 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     // The batch reviewer comes from the CLI, not from an agent file the pull request could change.
     assert!(args.contains("--agents {\"reviewhub-batch-reviewer\""), "{args}");
     // Nor do the checkout's project settings, hooks or agents.
-    assert!(args.contains("--setting-sources user") && args.contains("--strict-mcp-config"), "{args}");
+    assert!(args.contains("--setting-sources  --strict-mcp-config"), "no settings sources at all: {args}");
     // The reviewer runs no git: it reads the head commit's files, exported without symlinks, then removed.
     assert!(!args.contains("Bash(git"), "{args}");
     let cwd = std::fs::read_to_string(dir.join("claude-args.cwd")).unwrap();

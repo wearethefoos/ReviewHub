@@ -361,8 +361,9 @@ pub fn security_review(reference: &str, wait_for: Option<&str>, force: bool) -> 
         .arg(reviewer_prompt(&reference, &head, &report))
         .args(["--add-dir", &work.display().to_string()])
         .args(["--agents", &crate::plan::batch_agents()])
-        // The checkout is usually the pull request's branch: none of its project settings, hooks or agents apply.
-        .args(["--setting-sources", "user"])
+        // No settings at all: not the pull request's (project settings, hooks, agents, CLAUDE.md), and not the user's,
+        // whose allow rules (`npm test`, `make`) would let a misled reviewer run the pull request's code here.
+        .args(["--setting-sources", ""])
         // And no MCP server from the pull request's .mcp.json, even when the user's settings enable project servers.
         .arg("--strict-mcp-config")
         .args([
