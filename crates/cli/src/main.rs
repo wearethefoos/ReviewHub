@@ -198,7 +198,7 @@ Uses GITHUB_TOKEN, or the token from `gh auth login`."
         /// The model of the reviewer combining them, for the report's scanner
         #[arg(long)]
         model: Option<String>,
-        /// Write the report to this file instead of printing it
+        /// Write the report to this new file instead of printing it (an existing file is never replaced)
         #[arg(long, value_name = "FILE")]
         out: Option<PathBuf>,
     },

@@ -576,6 +576,8 @@ fn plans_and_merges_a_batched_security_review() {
         assert!(prompt.contains(output) && prompt.contains(notes) && prompt.contains("injection"));
         // Batch reviewers write no files (one could overwrite another's report): they reply, and the launcher saves.
         assert!(prompt.contains("Don't create or modify any files.") && prompt.contains("then a line `NOTES:`"));
+        // Replies are saved as they are, so they must be the validated report (a trial run lost `version`).
+        assert!(prompt.contains("`version` \"1\"") && prompt.contains("exactly as it passed validation"));
         for file in batch["files"].as_array().unwrap() {
             assert!(prompt.contains(file["path"].as_str().unwrap()));
         }
@@ -644,6 +646,10 @@ fn plans_and_merges_a_batched_security_review() {
     assert_eq!(report["commit"], head);
     assert!(!report["summary"].as_str().unwrap().contains("No usable report"));
     assert!(run(&mut github.reviewhub(&["validate", "security", merged.to_str().unwrap()])).status.success());
+    // --out only creates a file: an existing one, here the report just written, is never replaced.
+    let again = merge(&plan_file, &["--out", merged.to_str().unwrap()]);
+    assert!(!again.status.success() && stderr(&again).contains("must not exist yet"), "{}", stderr(&again));
+    assert_eq!(serde_json::from_str::<Value>(&std::fs::read_to_string(&merged).unwrap()).unwrap(), report);
 
     // Without --out, the merged report is printed.
     let printed = merge(&plan_file, &[]);

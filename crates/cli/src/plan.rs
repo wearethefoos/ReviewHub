@@ -72,8 +72,8 @@ pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path, notes: &
          around them with `git show {head}:<path>`. Read other files where you need to know how your files are \
          called or what they call, but report findings only in your files. Don't create or modify any files.\n\
          2. What to look for:\n\n{look}\n\n\
-         3. Write a ReviewHub security report (schema: `reviewhub schema security`; it will be saved to {out}): `scanner.name` \
-         \"reviewhub security-reviewer ({id})\", `scanner.model` \"{model}\", `commit` \"{head}\", a one or two \
+         3. Write a ReviewHub security report (schema: `reviewhub schema security`; it will be saved to {out}): `version` \
+         \"1\", `scanner.name` \"reviewhub security-reviewer ({id})\", `scanner.model` \"{model}\", `commit` \"{head}\", a one or two \
          sentence `summary`, and for each finding `id`, `title`, `severity`, `confidence`, `category` (a CWE id where \
          one fits), `file`, `lines` in the new version, a `description` of how it can be exploited, and \
          `suggestion.explanation` (plus `suggestion.diff`, a unified diff that applies with `git apply` on the head \
@@ -84,7 +84,8 @@ pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path, notes: &
          check across files: an assumption your files make about other code (\"routes/refunds.ts trusts \
          req.merchantId; check that the middleware sets it from the session\"), a changed function or contract that \
          other files rely on, or untrusted input that leaves your files. Write \"none\" when there are none.\n\
-         5. Reply with only the report JSON, then a line `NOTES:`, then the notes.",
+         5. Reply with only the report JSON, exactly as it passed validation (every field, `version` included), then \
+         a line `NOTES:`, then the notes.",
         notes = notes.display(),
         look = what_to_look_for(),
         out = output.display(),
@@ -104,8 +105,20 @@ fn new_dir(dir: &Path) -> Result<()> {
     builder.create(dir).with_context(|| format!("cannot create {} (it must not exist yet)", dir.display()))
 }
 
+/// Writes a new file, readable only by this user. Never an existing file or a symlink: agents that read the pull
+/// request's code run these commands, and an injected `--out ~/.bashrc` mustn't replace anything.
 pub fn write(path: &Path, text: &str) -> Result<()> {
-    std::fs::write(path, text).with_context(|| format!("cannot write {}", path.display()))
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file =
+        options.open(path).with_context(|| format!("cannot write {} (it must not exist yet)", path.display()))?;
+    file.write_all(text.as_bytes()).with_context(|| format!("cannot write {}", path.display()))
 }
 
 /// A new directory only this user can read.
@@ -242,6 +255,29 @@ mod tests {
         let missing = std::env::temp_dir().join("reviewhub-no-such-dir").join("plan.json");
         let err = write(&missing, "{}").unwrap_err();
         assert!(format!("{err}").contains("cannot write") && format!("{err}").contains("reviewhub-no-such-dir"));
+    }
+
+    #[test]
+    fn writes_new_files_only() {
+        let dir = private_dir().unwrap();
+        let file = dir.join("report.json");
+        write(&file, "{}").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        // An existing file isn't replaced, nor is the file a symlink points to.
+        assert!(format!("{}", write(&file, "[]").unwrap_err()).contains("must not exist yet"));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");
+        #[cfg(unix)]
+        {
+            let link = dir.join("link.json");
+            std::os::unix::fs::symlink(&file, &link).unwrap();
+            assert!(write(&link, "[]").is_err());
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), "{}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
