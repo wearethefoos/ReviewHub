@@ -114,7 +114,7 @@ pub fn setup_steps(stacks: &[Stack]) -> String {
             Stack::Node { dir, pm, .. } => {
                 if first {
                     if *pm == PackageManager::Pnpm {
-                        steps.push_str("      - uses: pnpm/action-setup@v4\n");
+                        steps.push_str("      - uses: pnpm/action-setup@v5\n");
                     }
                     let lock = match pm {
                         PackageManager::Npm => "package-lock.json",
@@ -128,13 +128,13 @@ pub fn setup_steps(stacks: &[Stack]) -> String {
                     };
                     let lock_path = if dir.is_empty() { lock.to_string() } else { format!("{dir}/{lock}") };
                     steps.push_str(&format!(
-                        "      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n          \
+                        "      - uses: actions/setup-node@v7\n        with:\n          node-version: 24\n          \
                          cache: {cache}\n          cache-dependency-path: {lock_path}\n"
                     ));
                 }
             }
             Stack::Python { .. } if first => {
-                steps.push_str("      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.x\"\n")
+                steps.push_str("      - uses: actions/setup-python@v7\n        with:\n          python-version: \"3.x\"\n")
             }
             _ => {}
         }

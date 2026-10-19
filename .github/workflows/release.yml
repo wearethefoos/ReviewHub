@@ -40,7 +40,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches the versions in the repository
         run: scripts/check-version.sh "${TAG#v}"
 
@@ -57,7 +57,7 @@ jobs:
           - { target: x86_64-pc-windows-msvc, os: windows-latest, ext: .exe }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -70,7 +70,7 @@ jobs:
           mkdir -p out
           cp "target/${{ matrix.target }}/release/reviewhub${{ matrix.ext }}" "out/reviewhub-${{ matrix.target }}${{ matrix.ext }}"
           "out/reviewhub-${{ matrix.target }}${{ matrix.ext }}" --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.target }}
           path: out/*
@@ -80,14 +80,14 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: ./.github/actions/wasm-tools
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: extension/package-lock.json
       - run: npm ci
@@ -98,7 +98,7 @@ jobs:
         run: |
           mkdir -p out
           (cd extension/dist && zip -qr "../../out/reviewhub-extension-${TAG}.zip" .)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: extension
           path: out/*
@@ -110,7 +110,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: out
           merge-multiple: true
@@ -134,7 +134,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.chrome-web-store
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: extension
           path: out
