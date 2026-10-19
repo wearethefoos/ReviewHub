@@ -48,7 +48,8 @@ pub fn batch_prompt(pr: &str, head: &str, batch: &Batch, output: &Path, notes: &
          Your files:\n{files}\n\
          1. Read their diffs with `reviewhub review {pr} --json --patches` (only your files are yours) and the code \
          around them with `git show {head}:<path>`. Read other files where you need to know how your files are \
-         called or what they call, but report findings only in your files. Don't modify any files except the report.\n\
+         called or what they call, but report findings only in your files. Don't create or modify any files except the report and the notes \
+         file named below.\n\
          2. What to look for:\n\n{look}\n\n\
          3. Write a ReviewHub security report (schema: `reviewhub schema security`) to {out}: `scanner.name` \
          \"reviewhub security-reviewer ({id})\", `scanner.model` \"{model}\", `commit` \"{head}\", a one or two \
