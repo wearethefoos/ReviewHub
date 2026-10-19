@@ -373,7 +373,7 @@ fn fake_claude(dir: &Path, report: &Path) -> String {
     let bin = dir.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
+        "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\necho \"$@\" > '{log}'\npwd > '{log}.cwd'\nfind . | sort > '{log}.files'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --add-dir ] && dir=\"$2\"; shift; done\ncp '{report}' \"$dir/reviewhub-security.json\"\n",
         log = dir.join("claude-args").display(),
         report = report.display()
     );
@@ -505,7 +505,17 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(!dir.join("claude-args").exists());
 
     // Nobody has: runs Claude Code, then validates and publishes what it wrote.
-    let head = format!("c0ffee{}", std::process::id());
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    std::fs::write(repo.join("src/app.ts"), "export {};\n").unwrap();
+    std::os::unix::fs::symlink("/etc/passwd", repo.join("src/passwords")).unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-q", "-m", "head"]);
+    let head = String::from_utf8(
+        std::process::Command::new("git").args(["rev-parse", "HEAD"]).current_dir(&repo).output().unwrap().stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_string();
     let skipped = check_runs(&head);
     let github = demo_github_at(
         &head,
@@ -532,6 +542,13 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(args.contains("--agents {\"reviewhub-batch-reviewer\""), "{args}");
     // Nor do the checkout's project settings, hooks or agents.
     assert!(args.contains("--setting-sources user"), "{args}");
+    // The reviewer runs no git: it reads the head commit's files, exported without symlinks, then removed.
+    assert!(!args.contains("Bash(git"), "{args}");
+    let cwd = std::fs::read_to_string(dir.join("claude-args.cwd")).unwrap();
+    assert!(cwd.trim().ends_with("/head"), "{cwd}");
+    assert!(!Path::new(cwd.trim()).exists(), "the export is removed afterwards");
+    let files = std::fs::read_to_string(dir.join("claude-args.files")).unwrap();
+    assert!(files.contains("./src/app.ts") && !files.contains("passwords"), "{files}");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
     assert!(post.body.contains("reviewhub:security"));
 
@@ -547,6 +564,26 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
         .env("PATH", &path)
         .env("GITHUB_TOKEN", "t"));
     assert!(!output.status.success() && stderr(&output).contains("the report is not valid"), "{}", stderr(&output));
+
+    // Without tar the head commit can't be exported, and nothing runs.
+    let no_tar = dir.join("no-tar");
+    std::fs::create_dir_all(&no_tar).unwrap();
+    for tool in ["git", "claude"] {
+        let lookup = format!("command -v {tool}");
+        let found = std::process::Command::new("sh").args(["-c", &lookup]).env("PATH", &path).output().unwrap();
+        let found = String::from_utf8(found.stdout).unwrap();
+        std::os::unix::fs::symlink(found.trim(), no_tar.join(tool)).unwrap();
+    }
+    let output =
+        run(github.reviewhub(&["security-review", "o/r#7", "--force"]).current_dir(&repo).env("PATH", &no_tar));
+    assert!(stderr(&output).contains(&format!("couldn't export commit {head}")), "{}", stderr(&output));
+
+    // A head commit the repository doesn't have and can't fetch.
+    git(&repo, &["remote", "set-url", "origin", "/nonexistent"]);
+    let missing = "0123456789abcdef0123456789abcdef01234567";
+    let github = demo_github_at(missing, vec![(&check_runs(missing), 200, runs("completed", json!("skipped")))]);
+    let output = run(github.reviewhub(&["security-review", "o/r#7"]).current_dir(&repo).env("PATH", &path));
+    assert!(stderr(&output).contains(&format!("doesn't have commit {missing}")), "{}", stderr(&output));
 
     let output = run(&mut github.reviewhub(&["security-review", "nonsense"]));
     assert!(stderr(&output).contains("expected owner/repo#123"));

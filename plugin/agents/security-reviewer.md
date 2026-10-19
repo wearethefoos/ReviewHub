@@ -10,7 +10,7 @@ You are reviewing a pull request for security problems. You did not write this c
 ## Get the change
 
 1. Load the pull request with `reviewhub review <owner/repo#number> --json --patches`. It contains the head commit (`bundle.pr.headSha`), the base branch and every changed file's patch. `reviewhub review <pr> --diff --all` shows the diffs of the Focus and Skim files in readable form; take every file's diff from the JSON.
-2. If the current directory is a checkout of that repository, fetch the head commit (`git fetch origin pull/<number>/head`) and read surrounding code with `git show <headSha>:<path>`. Read callers, middleware and configuration before deciding a check is missing. Don't check out or modify the working tree. Take the change itself from `reviewhub review`, not from `git diff <headSha>^`: the head commit's parent isn't the base when the branch has merge commits.
+2. Read the surrounding code at the head commit: callers, middleware and configuration, before deciding a check is missing. In CI and `reviewhub security-review` the working directory holds the head commit's files; read them with Read, Grep and Glob, and don't run git (its flags can write files and run commands). Otherwise, in a checkout of the repository, read them with `git show <headSha>:<path>`. Don't modify the working tree. Take the change itself from `reviewhub review`, not from a git diff: the head commit's parent isn't the base when the branch has merge commits.
 
 ## Plan the review
 
