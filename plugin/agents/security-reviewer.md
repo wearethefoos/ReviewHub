@@ -9,7 +9,7 @@ You are reviewing a pull request for security problems. You did not write this c
 
 ## Get the change
 
-1. Load the pull request with `reviewhub review <owner/repo#number> --json --patches`. It contains the head commit (`bundle.pr.headSha`), the base branch and every changed file's patch. `reviewhub review <pr> --diff` shows the same diffs in readable form.
+1. Load the pull request with `reviewhub review <owner/repo#number> --json --patches`. It contains the head commit (`bundle.pr.headSha`), the base branch and every changed file's patch. `reviewhub review <pr> --diff --all` shows the diffs of the Focus and Skim files in readable form; take every file's diff from the JSON.
 2. If the current directory is a checkout of that repository, fetch the head commit (`git fetch origin pull/<number>/head`) and read surrounding code with `git show <headSha>:<path>`. Read callers, middleware and configuration before deciding a check is missing. Don't check out or modify the working tree. Take the change itself from `reviewhub review`, not from `git diff <headSha>^`: the head commit's parent isn't the base when the branch has merge commits.
 
 ## Plan the review
@@ -22,7 +22,7 @@ Large pull requests are reviewed in batches: one reviewer reading everything at 
 When there are batch reports:
 
 1. Combine them: `reviewhub security-merge <each valid output> --model <your model> --out <a new file for your report>`. It drops duplicates and keeps the more severe one. Review the files of any batch that wrote no valid report yourself; if none did, write your report from scratch.
-2. Review across files. This is the part only you can do. Read every batch's notes and follow each to the code it points at. Check how the batches' files work together: a check in one file that another relies on, untrusted input from one file reaching a sink in another, a changed function and its callers, authorization split between a route and its middleware. Add the findings this turns up, drop or downgrade batch findings that other files show are handled, and make severities consistent.
+2. Review across files. This is the part only you can do. Read every batch's notes and follow each to the code it points at. Report problems the change introduces or makes reachable; a note about code the pull request leaves as it was only matters if the change now depends on it. Check how the batches' files work together: a check in one file that another relies on, untrusted input from one file reaching a sink in another, a changed function and its callers, authorization split between a route and its middleware. Add the findings this turns up, drop or downgrade batch findings that other files show are handled, and make severities consistent.
 3. Rewrite the report's `summary` for the whole pull request, then finish it as described under "The report".
 
 Files listed under `skipped` (generated code) need no review unless a batch's notes point at them.
