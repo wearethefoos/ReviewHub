@@ -530,6 +530,8 @@ fn security_review_runs_claude_unless_done_or_ci_has_it() {
     assert!(args.contains(&format!("Review o/r#7, head commit {head}")) && args.contains("--allowedTools"), "{args}");
     // The batch reviewer comes from the CLI, not from an agent file the pull request could change.
     assert!(args.contains("--agents {\"reviewhub-batch-reviewer\""), "{args}");
+    // Nor do the checkout's project settings, hooks or agents.
+    assert!(args.contains("--setting-sources user"), "{args}");
     let post = github.requests().into_iter().find(|r| r.method == "POST").unwrap();
     assert!(post.body.contains("reviewhub:security"));
 

@@ -90,7 +90,8 @@ jobs:
             printf '%s\n' "$instructions" | awk 'NR == 1 && /^---$/ { front = 1; next } front && /^---$/ { front = 0; next } !front'
             echo "REVIEWHUB_PROMPT_END"
             # The batch reviewer is defined by the CLI: agents passed with --agents take precedence over the pull
-            # request's .claude/agents/, which are removed as well.
+            # request's .claude/agents/, which are removed as well, and --setting-sources user keeps the pull
+            # request's project settings, hooks and agents from loading at all.
             echo "agents=$(reviewhub security-agents)"
           } >>"$GITHUB_OUTPUT"
           rm -rf .claude/agents
@@ -111,6 +112,7 @@ jobs:
             --model ${{ vars.REVIEWHUB_MODEL_STRONG || 'opus' }}
             --add-dir ${{ runner.temp }}/reviewhub-review
             --agents '${{ steps.prompt.outputs.agents }}'
+            --setting-sources user
             --allowedTools "Read,Grep,Glob,Write,Agent,Bash(reviewhub review:*),Bash(reviewhub schema:*),Bash(reviewhub validate:*),Bash(reviewhub security-plan:*),Bash(reviewhub security-merge:*),Bash(git show:*),Bash(git log:*),Bash(git diff:*)"
       - name: Check the report
         run: reviewhub validate security reviewhub-security.json

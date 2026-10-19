@@ -157,6 +157,8 @@ turn it off too."
     /// The git pre-push hook installed by `reviewhub init` (reads git's pre-push input on stdin)
     #[command(hide = true)]
     PrePush { remote: Option<String>, url: Option<String> },
+    /// Print the batch reviewer's definition for Claude Code's --agents
+    SecurityAgents,
     /// Plan a pull request's security review: one pass, or batches of files for subagents, with a model for each
     #[command(
         after_help = "Prints JSON. A small pull request is reviewed in one pass; a large one is split into batches, \
@@ -165,8 +167,6 @@ only the paths and the diff, never the author's manifest. Models: REVIEWHUB_MODE
 REVIEWHUB_MODEL_STANDARD (sonnet) and REVIEWHUB_MODEL_LIGHT (haiku), as Claude Code model aliases or ids. \
 Uses GITHUB_TOKEN, or the token from `gh auth login`."
     )]
-    /// Print the batch reviewer's definition for Claude Code's --agents
-    SecurityAgents,
     SecurityPlan {
         /// owner/repo#123 or a pull request URL
         #[arg(required_unless_present = "bundle")]

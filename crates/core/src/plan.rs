@@ -56,11 +56,13 @@ pub struct Limits {
     pub single_max_lines: u32,
     pub batch_max_files: usize,
     pub batch_max_lines: u32,
+    /// At most this many batches (each one a subagent): a huge pull request gets bigger batches instead.
+    pub max_batches: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { single_max_files: 6, single_max_lines: 400, batch_max_files: 5, batch_max_lines: 350 }
+        Limits { single_max_files: 6, single_max_lines: 400, batch_max_files: 5, batch_max_lines: 350, max_batches: 12 }
     }
 }
 
@@ -168,6 +170,7 @@ fn common_prefix(a: &str, b: &str) -> usize {
 }
 
 /// A group of files reviewed together: a source file and its tests, or one file.
+#[derive(Clone)]
 struct Unit {
     tier: ModelTier,
     lines: u32,
@@ -266,13 +269,40 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
 
     // Riskiest first, then biggest; batches only mix units of the same tier.
     units.sort_by(|a, b| b.tier.cmp(&a.tier).then(b.lines.cmp(&a.lines)));
+    // Each batch is a subagent: past the cap, batches grow rather than multiply. At worst there is one per tier.
+    let room = limits.max_batches.saturating_sub(usize::from(!dependencies.is_empty())).max(3);
+    let mut size = (limits.batch_max_files, limits.batch_max_lines);
+    let mut batches = pack(units.clone(), size, models);
+    while batches.len() > room {
+        size = (size.0 * 2, size.1 * 2);
+        batches = pack(units.clone(), size, models);
+    }
+    if !dependencies.is_empty() {
+        batches.push(Batch {
+            id: String::new(),
+            tier: ModelTier::Standard,
+            model: models.standard.clone(),
+            reason: String::new(),
+            changed_lines: dependencies.iter().map(|f| lines(f)).sum(),
+            files: dependencies.iter().map(|f| planned(f)).collect(),
+        });
+    }
+    for (i, batch) in batches.iter_mut().enumerate() {
+        batch.id = format!("batch-{}", i + 1);
+        batch.reason = reason(batch);
+    }
+    SecurityPlan { mode: Mode::Batched, batches, ..base }
+}
+
+/// Packs units, in order, into batches of at most `max_files` files and `max_lines` changed lines, one tier each.
+fn pack(units: Vec<Unit>, (max_files, max_lines): (usize, u32), models: &Models) -> Vec<Batch> {
     let mut batches: Vec<Batch> = Vec::new();
     let mut current: Option<Batch> = None;
     for unit in units {
         let fits = current.as_ref().is_some_and(|b| {
             b.tier == unit.tier
-                && b.files.len() + unit.files.len() <= limits.batch_max_files
-                && b.changed_lines + unit.lines <= limits.batch_max_lines
+                && b.files.len() + unit.files.len() <= max_files
+                && b.changed_lines + unit.lines <= max_lines
         });
         if !fits && let Some(done) = current.take() {
             batches.push(done);
@@ -289,21 +319,7 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
         batch.files.extend(unit.files);
     }
     batches.extend(current);
-    if !dependencies.is_empty() {
-        batches.push(Batch {
-            id: String::new(),
-            tier: ModelTier::Standard,
-            model: models.standard.clone(),
-            reason: String::new(),
-            changed_lines: dependencies.iter().map(|f| lines(f)).sum(),
-            files: dependencies.iter().map(|f| planned(f)).collect(),
-        });
-    }
-    for (i, batch) in batches.iter_mut().enumerate() {
-        batch.id = format!("batch-{}", i + 1);
-        batch.reason = reason(batch);
-    }
-    SecurityPlan { mode: Mode::Batched, batches, ..base }
+    batches
 }
 
 fn reason(batch: &Batch) -> String {
@@ -477,6 +493,24 @@ mod tests {
         let plan = security_plan(&files, &Models::default(), &Limits::default());
         assert_eq!(plan.mode, Mode::Batched);
         assert_eq!(plan.batches.iter().map(|b| b.files.len()).collect::<Vec<_>>(), vec![5, 5, 2]);
+    }
+
+    #[test]
+    fn caps_the_number_of_batches() {
+        let mut files: Vec<ChangedFile> = (0..1000).map(|i| file(&format!("src/f{i}.ts"), 20)).collect();
+        files.push(file("src/auth/login.ts", 20));
+        files.push(file("docs/guide.md", 20));
+        files.push(file("package.json", 1));
+        let plan = security_plan(&files, &Models::default(), &Limits::default());
+        assert!(plan.batches.len() <= Limits::default().max_batches, "{}", plan.batches.len());
+        assert_eq!(plan.batches.iter().map(|b| b.files.len()).sum::<usize>(), files.len(), "every file is reviewed");
+        // Bigger batches, but still one tier each and the strong model for the sensitive file.
+        let tiers: Vec<&str> = plan.batches.iter().map(|b| b.model.as_str()).collect();
+        assert_eq!(tiers.first(), Some(&"opus"));
+        assert!(tiers.contains(&"haiku") && tiers.last() == Some(&"sonnet"), "{tiers:?}");
+        // Even a cap below the number of tiers leaves one batch per tier.
+        let tight = Limits { max_batches: 1, ..Limits::default() };
+        assert_eq!(security_plan(&files, &Models::default(), &tight).batches.len(), 4);
     }
 
     #[test]
