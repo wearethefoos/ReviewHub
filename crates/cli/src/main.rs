@@ -172,7 +172,7 @@ Uses GITHUB_TOKEN, or the token from `gh auth login`."
         /// Read a saved bundle instead of GitHub
         #[arg(long, value_name = "FILE", conflicts_with = "pr")]
         bundle: Option<PathBuf>,
-        /// Directory for the batches' reports [default: a new private temporary directory]
+        /// New directory for the batches' reports; it must not exist yet [default: a new private temporary directory]
         #[arg(long, value_name = "DIR")]
         out_dir: Option<PathBuf>,
     },
@@ -390,7 +390,7 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::SecurityMerge { files, model, out } => {
             let report = serde_json::to_string_pretty(&plan::merge(&files, model)?.to_value())?;
             match out {
-                Some(out) => std::fs::write(&out, report).with_context(|| format!("cannot write {}", out.display()))?,
+                Some(out) => plan::write(&out, &report)?,
                 None => println!("{report}"),
             }
         }

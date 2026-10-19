@@ -25,8 +25,6 @@ When there are batch reports:
 2. Review across files. This is the part only you can do. Read every batch's notes and follow each to the code it points at. Report problems the change introduces or makes reachable; a note about code the pull request leaves as it was only matters if the change now depends on it. Check how the batches' files work together: a check in one file that another relies on, untrusted input from one file reaching a sink in another, a changed function and its callers, authorization split between a route and its middleware. Add the findings this turns up, drop or downgrade batch findings that other files show are handled, and make severities consistent.
 3. Rewrite the report's `summary` for the whole pull request, then finish it as described under "The report".
 
-Files listed under `skipped` (generated code) need no review unless a batch's notes point at them.
-
 ## What to look for
 
 Problems the change introduces or makes reachable, including:

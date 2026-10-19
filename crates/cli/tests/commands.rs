@@ -574,6 +574,18 @@ fn plans_and_merges_a_batched_security_review() {
             assert!(prompt.contains(file["path"].as_str().unwrap()));
         }
     }
+    // A directory that already exists could hold planted reports.
+    let again = run(&mut github.reviewhub(&[
+        "security-plan",
+        "--bundle",
+        DEMO,
+        "--out-dir",
+        dir.join("batches").to_str().unwrap(),
+    ]));
+    assert!(!again.status.success() && stderr(&again).contains("it must not exist yet"), "{}", stderr(&again));
+    // Paths are quoted in the instructions.
+    assert!(batches[0]["prompt"].as_str().unwrap().contains("- \"src/"), "{}", batches[0]["prompt"]);
+
     // The plan is saved for the reviewer of the whole pull request.
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("batches/plan.json")).unwrap()).unwrap();
     assert_eq!(saved, plan);
@@ -606,6 +618,29 @@ fn plans_and_merges_a_batched_security_review() {
     assert_eq!(report["findings"][0]["severity"], security["findings"][0]["severity"]);
     assert_eq!(report["scanner"], json!({ "name": "reviewhub security-reviewer", "model": "fable" }));
     assert!(run(&mut github.reviewhub(&["validate", "security", merged.to_str().unwrap()])).status.success());
+
+    // Without --out, the merged report is printed.
+    let printed = run(&mut github.reviewhub(&["security-merge", a.to_str().unwrap(), b.to_str().unwrap()]));
+    let printed: Value = serde_json::from_str(&stdout(&printed)).unwrap();
+    assert_eq!(printed["findings"], report["findings"]);
+    assert_eq!(printed["scanner"], json!({ "name": "reviewhub security-reviewer" }));
+
+    // A small pull request is reviewed in one pass: no batches, no directory.
+    let mut small = demo();
+    small["files"] = json!([demo()["files"][0], demo()["files"][1]]);
+    let small_bundle = dir.join("small.json");
+    std::fs::write(&small_bundle, small.to_string()).unwrap();
+    let output = run(&mut github.reviewhub(&["security-plan", "--bundle", small_bundle.to_str().unwrap()]));
+    let single: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!((single["mode"].as_str(), single["batches"].as_array().map(Vec::len)), (Some("single"), Some(0)));
+    assert!(single.get("planFile").is_none());
+
+    // Without --out-dir, the batches get a new private directory.
+    let output = run(&mut github.reviewhub(&["security-plan", "--bundle", DEMO]));
+    let fresh: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    let plan_file = PathBuf::from(fresh["planFile"].as_str().unwrap());
+    assert!(plan_file.is_file() && plan_file.parent().unwrap() != dir.join("batches"));
+    std::fs::remove_dir_all(plan_file.parent().unwrap()).unwrap();
 
     std::fs::write(&a, "{}").unwrap();
     let output = run(&mut github.reviewhub(&["security-merge", a.to_str().unwrap()]));

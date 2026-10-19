@@ -6,7 +6,8 @@
 //! The plan uses only the paths and the diff, never the author's manifest: the
 //! author mustn't be able to move a risky file out of review or onto a cheaper
 //! model. Each batch gets a model by risk: the strong model for sensitive areas,
-//! the light one for batches of only tests and docs, the standard one otherwise.
+//! the light one for batches of only tests, docs and snapshots, the standard one otherwise. Every changed file is
+//! reviewed: where a file lives is the author's choice, so it never takes a file out of review.
 
 use std::collections::BTreeMap;
 
@@ -97,12 +98,6 @@ pub struct Batch {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct Skipped {
-    pub path: String,
-    pub reason: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SecurityPlan {
     pub mode: Mode,
@@ -113,7 +108,6 @@ pub struct SecurityPlan {
     pub changed_lines: u32,
     /// Empty in single mode.
     pub batches: Vec<Batch>,
-    pub skipped: Vec<Skipped>,
 }
 
 const MANIFESTS: &[&str] = &[
@@ -143,6 +137,12 @@ fn is_lockfile(path: &str) -> bool {
 fn is_dependency_file(path: &str) -> bool {
     let name = file_name(path);
     is_lockfile(path) || MANIFESTS.contains(&name) || (name.starts_with("requirements") && name.ends_with(".txt"))
+}
+
+/// Files that don't run: prose and test snapshots, by extension (not by folder: a script in `docs/` still runs).
+fn is_inert(path: &str) -> bool {
+    let name = file_name(path).to_ascii_lowercase();
+    [".md", ".mdx", ".rst", ".adoc", ".txt", ".snap"].iter().any(|ext| name.ends_with(ext))
 }
 
 /// A test's subject: `src/a.test.ts`, `src/__tests__/a.ts` and `pkg/a_test.go` all test `a`.
@@ -181,15 +181,9 @@ fn lines(file: &ChangedFile) -> u32 {
 
 /// Plans the security review of a pull request's changed files.
 pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) -> SecurityPlan {
-    let mut skipped = Vec::new();
-    let mut reviewed: Vec<&ChangedFile> = Vec::new();
-    for file in files {
-        if crate::classify::is_generated_code(&file.path) {
-            skipped.push(Skipped { path: file.path.clone(), reason: "generated code".into() });
-        } else {
-            reviewed.push(file);
-        }
-    }
+    // Every changed file is reviewed: a path that looks generated (`build/`, `vendor/`, `*.gen.ts`) is the author's
+    // choice, so it can't be a reason to leave a file out.
+    let reviewed: Vec<&ChangedFile> = files.iter().collect();
     let total_lines: u32 = reviewed.iter().map(|f| lines(f)).sum();
     let base = SecurityPlan {
         mode: Mode::Single,
@@ -198,7 +192,6 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
         changed_files: files.len(),
         changed_lines: files.iter().map(|f| f.additions + f.deletions).sum(),
         batches: Vec::new(),
-        skipped,
     };
     if reviewed.len() <= limits.single_max_files && total_lines <= limits.single_max_lines {
         return base;
@@ -213,10 +206,11 @@ pub fn security_plan(files: &[ChangedFile], models: &Models, limits: &Limits) ->
     let mut units: Vec<Unit> = sources
         .iter()
         .map(|f| {
-            let tier = if detect_role(&f.path) == FileRole::Docs {
-                ModelTier::Light
-            } else if sensitive_area(&f.path).is_some() {
+            let inert = is_inert(&f.path);
+            let tier = if sensitive_area(&f.path).is_some() && !inert {
                 ModelTier::Strong
+            } else if inert {
+                ModelTier::Light
             } else {
                 ModelTier::Standard
             };
@@ -305,7 +299,7 @@ fn reason(batch: &Batch) -> String {
     }
     match batch.tier {
         ModelTier::Strong => format!("sensitive: {}", areas.join(", ")),
-        ModelTier::Light => "only tests and docs".into(),
+        ModelTier::Light => "only tests, docs and snapshots".into(),
         ModelTier::Standard => "application code".into(),
     }
 }
@@ -398,15 +392,14 @@ mod tests {
     #[test]
     fn reviews_small_pull_requests_in_one_pass() {
         let plan = security_plan(
-            &[file("src/a.ts", 100), file("src/a.test.ts", 50), file("dist/a.min.js", 9000)],
+            &[file("src/a.ts", 100), file("src/a.test.ts", 50), file("src/__snapshots__/a.snap", 30)],
             &Models::default(),
             &Limits::default(),
         );
         assert_eq!(plan.mode, Mode::Single);
         assert_eq!(plan.coordinator_model, "opus");
         assert!(plan.batches.is_empty());
-        assert_eq!(plan.skipped.len(), 1, "generated code isn't reviewed");
-        assert_eq!(plan.changed_lines, 9150);
+        assert_eq!(plan.changed_lines, 180);
     }
 
     #[test]
@@ -443,16 +436,16 @@ mod tests {
                 // Application code on the standard model, within the line budget.
                 ("batch-2", "sonnet", vec!["src/api/routes/orders.ts"]),
                 ("batch-3", "sonnet", vec!["src/api/routes/users.ts", "src/ui/form.tsx", "src/ui/button.tsx"]),
-                // Tests without their source and docs on the light model.
-                ("batch-4", "haiku", vec!["test/e2e/profile.spec.ts", "docs/api.md"]),
+                // Snapshots, tests without their source, and docs on the light model; nothing is left out.
+                ("batch-4", "haiku", vec!["src/__snapshots__/a.snap"]),
+                ("batch-5", "haiku", vec!["test/e2e/profile.spec.ts", "docs/api.md"]),
                 // The supply chain together; lockfile lines don't count against the budget.
-                ("batch-5", "sonnet", vec!["package.json", "package-lock.json"]),
+                ("batch-6", "sonnet", vec!["package.json", "package-lock.json"]),
             ]
         );
         assert_eq!(plan.batches[0].reason, "sensitive: payments, CI pipeline");
-        assert_eq!(plan.batches[4].reason, "dependency changes");
-        assert_eq!(plan.batches[4].changed_lines, 3);
-        assert_eq!(plan.skipped.iter().map(|s| s.path.as_str()).collect::<Vec<_>>(), vec!["src/__snapshots__/a.snap"]);
+        assert_eq!(plan.batches[5].reason, "dependency changes");
+        assert_eq!(plan.batches[5].changed_lines, 3);
     }
 
     #[test]
@@ -532,6 +525,34 @@ mod tests {
             Some("h".into()),
         );
         assert_eq!(merged.findings.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), vec!["f1", "f1-2"]);
+
+        // Without lines or a category, the file and the title decide; a finding with lines differs from one without.
+        let mut whole_file = finding("leak", "src/e.ts", (1, 1), "x", Severity::Low);
+        (whole_file.lines, whole_file.category) = (None, None);
+        let mut same = whole_file.clone();
+        same.title = format!("  {}  ", whole_file.title.to_uppercase());
+        same.confidence = Confidence::High;
+        let mut other_title = whole_file.clone();
+        other_title.title = "Something else".into();
+        let mut unsure = same.clone();
+        unsure.confidence = Confidence::Low;
+        let with_lines = finding("leak", "src/e.ts", (5, 6), "x", Severity::Low);
+        let titled = merge_security(
+            &[("1".into(), report("", vec![whole_file, same, unsure, other_title, with_lines]))],
+            Scanner { name: "s".into(), model: None },
+            None,
+        );
+        let got: Vec<(&str, Option<&str>, Confidence)> =
+            titled.findings.iter().map(|f| (f.id.as_str(), f.category.as_deref(), f.confidence)).collect();
+        assert_eq!(
+            got,
+            vec![
+                ("leak", None, Confidence::High),
+                ("leak-2", None, Confidence::Medium),
+                ("leak-3", Some("x"), Confidence::Medium)
+            ],
+            "the more confident duplicate wins"
+        );
         assert_eq!(merged.commit.as_deref(), Some("h"));
     }
 
@@ -553,5 +574,28 @@ mod tests {
                 ("haiku", vec!["docs/api/refunds.md"]),
             ]
         );
+    }
+
+    #[test]
+    fn where_a_file_lives_never_takes_it_out_of_review() {
+        let files = [
+            file("src/generated/auth.ts", 100),
+            file("scripts/build/deploy.sh", 100),
+            file("docs/auth_middleware.ts", 100),
+            file("vendor/lib/parse.js", 100),
+            file("docs/guide.md", 100),
+            file("src/a.ts", 100),
+            file("src/b.ts", 100),
+        ];
+        let plan = security_plan(&files, &Models::default(), &Limits { batch_max_files: 1, ..Limits::default() });
+        let model = |path: &str| {
+            plan.batches.iter().find(|b| b.files.iter().any(|f| f.path == path)).map(|b| b.model.as_str()).unwrap()
+        };
+        assert_eq!(model("src/generated/auth.ts"), "opus");
+        assert_eq!(model("docs/auth_middleware.ts"), "opus", "code in docs/ is still code");
+        assert_eq!(model("scripts/build/deploy.sh"), "sonnet");
+        assert_eq!(model("vendor/lib/parse.js"), "sonnet");
+        assert_eq!(model("docs/guide.md"), "haiku");
+        assert_eq!(plan.batches.iter().map(|b| b.files.len()).sum::<usize>(), files.len());
     }
 }
